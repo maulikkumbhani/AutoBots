@@ -32,6 +32,9 @@ async def list_instruments():
     return INSTRUMENTS_METADATA
 
 
+from app.execution.bot_runner import trading_bot
+
+
 @router.get("/candles", response_model=CandleSeriesResponse)
 async def get_candles(
     symbol: str = Query("NIFTY 50", description="Symbol e.g. NIFTY 50, AAPL, GC=F"),
@@ -39,7 +42,7 @@ async def get_candles(
     days_back: int = Query(15, description="Number of days lookback"),
     provider: str = Query("yahoo", description="Provider: yahoo | mock"),
 ):
-    """Fetches standardized historical OHLCV candles."""
+    """Fetches standardized historical OHLCV candles synced with live ticks."""
     now = datetime.now(pytz.UTC)
     start_time = now - timedelta(days=days_back)
     
@@ -47,10 +50,17 @@ async def get_candles(
     try:
         df = await selected_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
         if df.empty and provider.lower() == "yahoo":
-            # Fallback to mock provider if network/rate limit
             df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
     except Exception:
         df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
+
+    # Sync live tick if available
+    live_price = trading_bot.live_prices.get(symbol)
+    if not df.empty and live_price:
+        last_idx = df.index[-1]
+        df.loc[last_idx, "close"] = live_price
+        df.loc[last_idx, "high"] = max(df.loc[last_idx, "high"], live_price)
+        df.loc[last_idx, "low"] = min(df.loc[last_idx, "low"], live_price)
 
     candles = [
         CandleSchema(
@@ -67,8 +77,17 @@ async def get_candles(
     return CandleSeriesResponse(symbol=symbol, timeframe=timeframe, candles=candles)
 
 
+@router.get("/live-tick")
+async def get_live_tick(symbol: str = "NIFTY 50"):
+    """Returns the up-to-the-second real-time market price and active candle tick."""
+    return trading_bot.get_live_tick(symbol)
+
+
 @router.get("/quote")
 async def get_quote(symbol: str = "NIFTY 50", provider: str = "yahoo"):
+    live_p = trading_bot.live_prices.get(symbol)
+    if live_p:
+        return {"symbol": symbol, "price": live_p, "timestamp": datetime.now(pytz.UTC), "volume": 1000.0}
     selected_provider = yahoo_provider if provider.lower() == "yahoo" else mock_provider
     try:
         quote = await selected_provider.fetch_latest_quote(symbol)

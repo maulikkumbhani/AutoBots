@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Candle,
   IndicatorValues,
@@ -12,6 +12,7 @@ import {
 import {
   fetchInstruments,
   fetchCandles,
+  fetchLiveTick,
   fetchIndicators,
   generatePrediction,
   fetchBotStatus,
@@ -35,12 +36,13 @@ import {
   Target,
   Clock,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"replay" | "portfolio" | "accuracy">("replay");
+  const [activeTab, setActiveTab] = useState<"replay" | "portfolio" | "accuracy">("portfolio");
 
   // State
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -52,13 +54,18 @@ export const App: React.FC = () => {
   const [accuracyData, setAccuracyData] = useState<AccuracyDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Auto-Sync state
+  const [autoSync, setAutoSync] = useState(true);
+  const [priceChangeDir, setPriceChangeDir] = useState<"up" | "down" | "flat">("flat");
+  const lastPriceRef = useRef<number>(0);
+
   // Chart Overlay toggles
   const [showEma9, setShowEma9] = useState(true);
   const [showEma20, setShowEma20] = useState(true);
   const [showEma50, setShowEma50] = useState(true);
   const [showBollinger, setShowBollinger] = useState(true);
 
-  // Load market data & forecast
+  // Initial load of full candles & indicators
   const loadMarketData = async () => {
     setLoading(true);
     try {
@@ -69,7 +76,11 @@ export const App: React.FC = () => {
       setCandles(cData);
       setIndicators(indData);
 
-      // Generate forecast for current cutoff
+      if (cData.length > 0) {
+        lastPriceRef.current = cData[cData.length - 1].close;
+      }
+
+      // Generate forecast for current point
       const nowIso = new Date().toISOString();
       const pred = await generatePrediction(selectedSymbol, nowIso, "60m", "ENSEMBLE");
       setCurrentForecast(pred);
@@ -80,7 +91,37 @@ export const App: React.FC = () => {
     }
   };
 
-  // Load trading portfolio & bot status
+  // Sync live price tick and update the chart candle
+  const syncLiveTick = async () => {
+    try {
+      const tick = await fetchLiveTick(selectedSymbol);
+      if (tick && tick.price) {
+        const prevP = lastPriceRef.current;
+        if (tick.price > prevP) setPriceChangeDir("up");
+        else if (tick.price < prevP) setPriceChangeDir("down");
+        lastPriceRef.current = tick.price;
+
+        // Dynamically update the active candle in the candles array
+        setCandles((prevCandles) => {
+          if (!prevCandles || prevCandles.length === 0) return prevCandles;
+          const updated = [...prevCandles];
+          const lastIdx = updated.length - 1;
+          const last = { ...updated[lastIdx] };
+
+          last.close = tick.price;
+          last.high = Math.max(last.high, tick.price);
+          last.low = Math.min(last.low, tick.price);
+          last.volume = (last.volume || 1000) + 15;
+          updated[lastIdx] = last;
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error("Live tick error:", err);
+    }
+  };
+
+  // Sync system state (bot, orders, positions, portfolio)
   const loadSystemState = async () => {
     try {
       const [bStatus, port, pos, acc] = await Promise.all([
@@ -98,23 +139,30 @@ export const App: React.FC = () => {
     }
   };
 
+  // Initial load
   useEffect(() => {
     loadMarketData();
   }, [selectedSymbol, timeframe]);
 
+  // Continuous Auto-Sync Loop (3 seconds interval)
   useEffect(() => {
     loadSystemState();
-    // Poll system state every 10 seconds for real-time paper trading updates
-    const interval = setInterval(loadSystemState, 10000);
+
+    if (!autoSync) return;
+
+    const interval = setInterval(async () => {
+      await syncLiveTick();
+      await loadSystemState();
+    }, 3000);
+
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedSymbol, autoSync]);
 
   // Handle replay execution
   const handleReplayExecuted = (result: ReplayResult) => {
     if (result.forecast) {
       setCurrentForecast(result.forecast);
     }
-    // If replay provides indicators snapshot, we can focus on it
   };
 
   // Convert positions into chart signal markers
@@ -128,7 +176,7 @@ export const App: React.FC = () => {
       text: `${p.side} @ ${p.entry_price.toFixed(1)}`,
     }));
 
-  const lastPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
+  const lastPrice = candles.length > 0 ? candles[candles.length - 1].close : lastPriceRef.current;
 
   return (
     <div className="app-container">
@@ -146,7 +194,7 @@ export const App: React.FC = () => {
         <div className="ticker-strip">
           <div className="ticker-item">
             <span style={{ color: "var(--text-dim)" }}>NIFTY 50:</span>
-            <span style={{ fontWeight: 700 }}>22,345.20</span>
+            <span style={{ fontWeight: 700 }}>22,363.35</span>
             <span style={{ color: "var(--bullish-green)" }}>+0.42%</span>
           </div>
           <div className="ticker-item">
@@ -168,6 +216,21 @@ export const App: React.FC = () => {
 
         {/* Controls */}
         <div className="nav-controls">
+          {/* Auto-Sync Toggle */}
+          <button
+            className={`btn ${autoSync ? "btn-outline" : "btn-outline"}`}
+            style={{
+              borderColor: autoSync ? "var(--bullish-green)" : "var(--border-subtle)",
+              background: autoSync ? "rgba(16, 185, 129, 0.1)" : "transparent",
+              color: autoSync ? "var(--bullish-green)" : "var(--text-muted)",
+            }}
+            onClick={() => setAutoSync(!autoSync)}
+            title="Toggle Live Continuous Auto-Sync (3s)"
+          >
+            <Zap size={14} className={autoSync ? "animate-pulse" : ""} />
+            <span>{autoSync ? "LIVE AUTO-SYNC: ON (3s)" : "AUTO-SYNC: OFF"}</span>
+          </button>
+
           <select
             className="select-control"
             value={selectedSymbol}
@@ -196,8 +259,8 @@ export const App: React.FC = () => {
             <option value="1d">1d</option>
           </select>
 
-          <button className="btn btn-outline" onClick={loadMarketData} disabled={loading} title="Refresh Live Data">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
+          <button className="btn btn-outline" onClick={loadMarketData} disabled={loading} title="Manual Reload">
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Reload
           </button>
         </div>
       </header>
@@ -211,11 +274,24 @@ export const App: React.FC = () => {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <span style={{ fontSize: "16px", fontWeight: 800 }}>{selectedSymbol}</span>
-                <span style={{ fontSize: "14px", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 700,
+                    color:
+                      priceChangeDir === "up"
+                        ? "var(--bullish-green)"
+                        : priceChangeDir === "down"
+                        ? "var(--bearish-red)"
+                        : "var(--text-main)",
+                    transition: "color 0.2s ease",
+                  }}
+                >
                   ₹{lastPrice > 0 ? lastPrice.toFixed(2) : "Loading..."}
                 </span>
                 <span className="pill-badge pill-neutral">
-                  <Activity size={12} /> {timeframe} INTERACTIVE
+                  <span className="pulse-indicator"></span> LIVE FEED ({timeframe})
                 </span>
               </div>
 
@@ -263,19 +339,19 @@ export const App: React.FC = () => {
           {/* Module Tabs Navigation */}
           <div className="tabs-nav">
             <button
-              className={`tab-btn ${activeTab === "replay" ? "active" : ""}`}
-              onClick={() => setActiveTab("replay")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <History size={14} /> Historical Replay Testing
-              </div>
-            </button>
-            <button
               className={`tab-btn ${activeTab === "portfolio" ? "active" : ""}`}
               onClick={() => setActiveTab("portfolio")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Wallet size={14} /> Paper Portfolio & Blotter ({positions.filter((p) => p.status === "OPEN").length})
+              </div>
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "replay" ? "active" : ""}`}
+              onClick={() => setActiveTab("replay")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <History size={14} /> Historical Replay Testing
               </div>
             </button>
             <button
@@ -289,11 +365,11 @@ export const App: React.FC = () => {
           </div>
 
           {/* Tab Views */}
-          {activeTab === "replay" && (
-            <ReplayControlPanel symbol={selectedSymbol} onReplayExecuted={handleReplayExecuted} />
-          )}
           {activeTab === "portfolio" && (
             <PortfolioBlotter portfolio={portfolio} positions={positions} />
+          )}
+          {activeTab === "replay" && (
+            <ReplayControlPanel symbol={selectedSymbol} onReplayExecuted={handleReplayExecuted} />
           )}
           {activeTab === "accuracy" && (
             <AccuracyDashboard accuracyData={accuracyData} />

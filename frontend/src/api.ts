@@ -25,7 +25,11 @@ export async function fetchCandles(symbol: string, timeframe: string, daysBack =
   const data = await res.json();
   return data.candles;
 }
-
+export async function fetchLiveTick(symbol: string): Promise<{ symbol: string; price: number; timestamp: string; latest_candle: Candle }> {
+  const res = await fetch(`${API_BASE}/markets/live-tick?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch live tick");
+  return res.json();
+}
 export async function fetchIndicators(symbol: string, timeframe: string, daysBack = 20): Promise<IndicatorValues[]> {
   const res = await fetch(
     `${API_BASE}/indicators/calculate?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&days_back=${daysBack}&provider=yahoo`

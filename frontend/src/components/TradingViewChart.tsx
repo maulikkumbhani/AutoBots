@@ -12,9 +12,9 @@ interface Props {
   showVolume?: boolean;
   signalMarkers?: Array<{
     time: string;
-    position: 'aboveBar' | 'belowBar';
+    position: "aboveBar" | "belowBar";
     color: string;
-    shape: 'arrowUp' | 'arrowDown' | 'circle';
+    shape: "arrowUp" | "arrowDown" | "circle";
     text: string;
   }>;
 }
@@ -31,17 +31,20 @@ export const TradingViewChart: React.FC<Props> = ({
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const ema9SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema20SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema50SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bbUpperSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bbLowerSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const isFirstLoadRef = useRef(true);
 
+  // Initialize chart instance once
   useEffect(() => {
-    if (!chartContainerRef.current || candles.length === 0) return;
-
-    // Clean previous chart instance
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
-
+    if (!chartContainerRef.current) return;
     const container = chartContainerRef.current;
+
     const chart = createChart(container, {
       layout: {
         background: { type: ColorType.Solid, color: "#080b11" },
@@ -67,8 +70,8 @@ export const TradingViewChart: React.FC<Props> = ({
 
     chartRef.current = chart;
 
-    // 1. Candlestick series
-    const candleSeries = chart.addCandlestickSeries({
+    // Candlestick series
+    candleSeriesRef.current = chart.addCandlestickSeries({
       upColor: "#10b981",
       downColor: "#ef4444",
       borderUpColor: "#10b981",
@@ -77,7 +80,69 @@ export const TradingViewChart: React.FC<Props> = ({
       wickDownColor: "#ef4444",
     });
 
-    // Format candle data (timestamps converted to UNIX seconds)
+    // Volume series
+    const vol = chart.addHistogramSeries({
+      color: "rgba(99, 102, 241, 0.35)",
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+    });
+    vol.priceScale().applyOptions({
+      scaleMargins: { top: 0.82, bottom: 0 },
+    });
+    volumeSeriesRef.current = vol;
+
+    // Overlays
+    ema9SeriesRef.current = chart.addLineSeries({
+      color: "#a855f7",
+      lineWidth: 1,
+      title: "EMA 9",
+    });
+
+    ema20SeriesRef.current = chart.addLineSeries({
+      color: "#38bdf8",
+      lineWidth: 2,
+      title: "EMA 20",
+    });
+
+    ema50SeriesRef.current = chart.addLineSeries({
+      color: "#f59e0b",
+      lineWidth: 2,
+      title: "EMA 50",
+    });
+
+    bbUpperSeriesRef.current = chart.addLineSeries({
+      color: "rgba(236, 72, 153, 0.65)",
+      lineWidth: 1,
+      lineStyle: 2,
+      title: "BB Upper",
+    });
+
+    bbLowerSeriesRef.current = chart.addLineSeries({
+      color: "rgba(236, 72, 153, 0.65)",
+      lineWidth: 1,
+      lineStyle: 2,
+      title: "BB Lower",
+    });
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      chart.remove();
+      chartRef.current = null;
+    };
+  }, []);
+
+  // Smooth data update without chart recreation
+  useEffect(() => {
+    if (!chartRef.current || !candleSeriesRef.current || candles.length === 0) return;
+
+    // Sort and format candle timestamps
     const formattedCandles = candles
       .map((c) => ({
         time: Math.floor(new Date(c.timestamp).getTime() / 1000) as any,
@@ -89,119 +154,95 @@ export const TradingViewChart: React.FC<Props> = ({
       .filter((c, idx, arr) => idx === 0 || c.time > arr[idx - 1].time)
       .sort((a, b) => (a.time as number) - (b.time as number));
 
-    candleSeries.setData(formattedCandles);
+    candleSeriesRef.current.setData(formattedCandles);
 
-    // 2. Volume series
-    if (showVolume) {
-      const volumeSeries = chart.addHistogramSeries({
-        color: "rgba(99, 102, 241, 0.35)",
-        priceFormat: { type: "volume" },
-        priceScaleId: "", // Overlay on separate subscale
-      });
-      volumeSeries.priceScale().applyOptions({
-        scaleMargins: { top: 0.82, bottom: 0 },
-      });
-
-      const formattedVolume = candles
-        .map((c) => ({
-          time: Math.floor(new Date(c.timestamp).getTime() / 1000) as any,
-          value: c.volume,
-          color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
-        }))
-        .filter((c, idx, arr) => idx === 0 || c.time > arr[idx - 1].time)
-        .sort((a, b) => (a.time as number) - (b.time as number));
-
-      volumeSeries.setData(formattedVolume);
+    // Volume
+    if (volumeSeriesRef.current) {
+      if (showVolume) {
+        const formattedVolume = candles
+          .map((c) => ({
+            time: Math.floor(new Date(c.timestamp).getTime() / 1000) as any,
+            value: c.volume,
+            color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
+          }))
+          .filter((c, idx, arr) => idx === 0 || c.time > arr[idx - 1].time)
+          .sort((a, b) => (a.time as number) - (b.time as number));
+        volumeSeriesRef.current.setData(formattedVolume);
+      } else {
+        volumeSeriesRef.current.setData([]);
+      }
     }
 
-    // 3. Technical Indicator Overlays
-    if (indicators && indicators.length > 0) {
-      // Map indicator timestamps
-      const sortedIndicators = [...indicators].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    // Indicators
+    const sortedIndicators = [...indicators].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    if (ema9SeriesRef.current) {
+      ema9SeriesRef.current.setData(
+        showEma9
+          ? sortedIndicators
+              .filter((ind) => ind.ema_9 != null)
+              .map((ind) => ({
+                time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
+                value: ind.ema_9!,
+              }))
+          : []
       );
+    }
 
-      // EMA 9
-      if (showEma9) {
-        const ema9Series = chart.addLineSeries({
-          color: "#a855f7", // Purple
-          lineWidth: 1,
-          title: "EMA 9",
-        });
-        const ema9Data = sortedIndicators
-          .filter((ind) => ind.ema_9 != null)
-          .map((ind) => ({
-            time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
-            value: ind.ema_9!,
-          }));
-        if (ema9Data.length > 0) ema9Series.setData(ema9Data);
-      }
+    if (ema20SeriesRef.current) {
+      ema20SeriesRef.current.setData(
+        showEma20
+          ? sortedIndicators
+              .filter((ind) => ind.ema_20 != null)
+              .map((ind) => ({
+                time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
+                value: ind.ema_20!,
+              }))
+          : []
+      );
+    }
 
-      // EMA 20
-      if (showEma20) {
-        const ema20Series = chart.addLineSeries({
-          color: "#38bdf8", // Cyan / Blue
-          lineWidth: 2,
-          title: "EMA 20",
-        });
-        const ema20Data = sortedIndicators
-          .filter((ind) => ind.ema_20 != null)
-          .map((ind) => ({
-            time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
-            value: ind.ema_20!,
-          }));
-        if (ema20Data.length > 0) ema20Series.setData(ema20Data);
-      }
+    if (ema50SeriesRef.current) {
+      ema50SeriesRef.current.setData(
+        showEma50
+          ? sortedIndicators
+              .filter((ind) => ind.ema_50 != null)
+              .map((ind) => ({
+                time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
+                value: ind.ema_50!,
+              }))
+          : []
+      );
+    }
 
-      // EMA 50
-      if (showEma50) {
-        const ema50Series = chart.addLineSeries({
-          color: "#f59e0b", // Amber
-          lineWidth: 2,
-          title: "EMA 50",
-        });
-        const ema50Data = sortedIndicators
-          .filter((ind) => ind.ema_50 != null)
-          .map((ind) => ({
-            time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
-            value: ind.ema_50!,
-          }));
-        if (ema50Data.length > 0) ema50Series.setData(ema50Data);
-      }
-
-      // Bollinger Bands
+    if (bbUpperSeriesRef.current && bbLowerSeriesRef.current) {
       if (showBollinger) {
-        const bbUpperSeries = chart.addLineSeries({
-          color: "rgba(236, 72, 153, 0.65)", // Pink
-          lineWidth: 1,
-          lineStyle: 2, // Dashed
-          title: "BB Upper",
-        });
-        const bbLowerSeries = chart.addLineSeries({
-          color: "rgba(236, 72, 153, 0.65)",
-          lineWidth: 1,
-          lineStyle: 2,
-          title: "BB Lower",
-        });
-        const upperData = sortedIndicators
-          .filter((ind) => ind.bb_upper != null)
-          .map((ind) => ({
-            time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
-            value: ind.bb_upper!,
-          }));
-        const lowerData = sortedIndicators
-          .filter((ind) => ind.bb_lower != null)
-          .map((ind) => ({
-            time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
-            value: ind.bb_lower!,
-          }));
-        if (upperData.length > 0) bbUpperSeries.setData(upperData);
-        if (lowerData.length > 0) bbLowerSeries.setData(lowerData);
+        bbUpperSeriesRef.current.setData(
+          sortedIndicators
+            .filter((ind) => ind.bb_upper != null)
+            .map((ind) => ({
+              time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
+              value: ind.bb_upper!,
+            }))
+        );
+        bbLowerSeriesRef.current.setData(
+          sortedIndicators
+            .filter((ind) => ind.bb_lower != null)
+            .map((ind) => ({
+              time: Math.floor(new Date(ind.timestamp).getTime() / 1000) as any,
+              value: ind.bb_lower!,
+            }))
+        );
+      } else {
+        bbUpperSeriesRef.current.setData([]);
+        bbLowerSeriesRef.current.setData([]);
       }
     }
 
-    // 4. Signal Markers
-    if (signalMarkers.length > 0) {
+    // Signal Markers
+    if (candleSeriesRef.current) {
       const formattedMarkers = signalMarkers.map((m) => ({
         time: Math.floor(new Date(m.time).getTime() / 1000) as any,
         position: m.position,
@@ -209,26 +250,14 @@ export const TradingViewChart: React.FC<Props> = ({
         shape: m.shape,
         text: m.text,
       }));
-      candleSeries.setMarkers(formattedMarkers);
+      candleSeriesRef.current.setMarkers(formattedMarkers);
     }
 
-    chart.timeScale().fitContent();
-
-    // Resize handler
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
-    };
+    // Only fit content on initial load so user zoom is maintained
+    if (isFirstLoadRef.current) {
+      chartRef.current.timeScale().fitContent();
+      isFirstLoadRef.current = false;
+    }
   }, [candles, indicators, showEma9, showEma20, showEma50, showBollinger, showVolume, signalMarkers]);
 
   return (

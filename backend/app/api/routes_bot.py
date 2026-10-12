@@ -24,17 +24,15 @@ async def get_bot_status():
 
 @router.post("/start")
 async def start_bot():
-    """Activates automated trading bot."""
-    trading_bot.is_active = True
-    # Run immediate cycle upon starting
-    await trading_bot.execute_cycle()
+    """Activates automated trading bot in continuous background execution."""
+    await trading_bot.start()
     return {"message": "Auto-trading bot started successfully", "status": trading_bot.get_config()}
 
 
 @router.post("/stop")
 async def stop_bot():
-    """Deactivates automated trading bot."""
-    trading_bot.is_active = False
+    """Deactivates automated trading bot background execution."""
+    await trading_bot.stop()
     return {"message": "Auto-trading bot stopped", "status": trading_bot.get_config()}
 
 
