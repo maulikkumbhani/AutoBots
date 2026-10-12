@@ -1,0 +1,19 @@
+# Python
+venv/
+backend/venv/
+**/venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# Logs
+*.log
