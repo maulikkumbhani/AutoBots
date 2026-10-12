@@ -1,3 +1,16 @@
+export interface TickerItem {
+  symbol: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  currency: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  prev_close?: number;
+  timestamp: string;
+}
+
 export interface Candle {
   timestamp: string;
   open: number;

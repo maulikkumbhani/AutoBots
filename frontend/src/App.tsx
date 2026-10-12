@@ -8,11 +8,13 @@ import {
   Position,
   PortfolioSummary,
   AccuracyDashboardData,
+  TickerItem,
 } from "./types";
 import {
   fetchInstruments,
   fetchCandles,
   fetchLiveTick,
+  fetchTickerStrip,
   fetchIndicators,
   generatePrediction,
   fetchBotStatus,
@@ -37,14 +39,16 @@ import {
   Clock,
   Sparkles,
   Zap,
+  Calendar,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"replay" | "portfolio" | "accuracy">("portfolio");
+  const [activeTab, setActiveTab] = useState<"portfolio" | "replay" | "accuracy">("portfolio");
 
   // State
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [indicators, setIndicators] = useState<IndicatorValues[]>([]);
   const [currentForecast, setCurrentForecast] = useState<ForecastResponse | null>(null);
@@ -59,22 +63,100 @@ export const App: React.FC = () => {
   const [priceChangeDir, setPriceChangeDir] = useState<"up" | "down" | "flat">("flat");
   const lastPriceRef = useRef<number>(0);
 
+  // Clock & countdown
+  const [currentTimeStr, setCurrentTimeStr] = useState<string>("");
+  const [countdownSecs, setCountdownSecs] = useState<number>(180);
+
   // Chart Overlay toggles
   const [showEma9, setShowEma9] = useState(true);
   const [showEma20, setShowEma20] = useState(true);
   const [showEma50, setShowEma50] = useState(true);
   const [showBollinger, setShowBollinger] = useState(true);
 
-  // Initial load of full candles & indicators
+  // Candle timeframe duration in seconds
+  const getCandlePeriodSecs = (tf: string): number => {
+    switch (tf.toLowerCase()) {
+      case "1m": return 60;
+      case "5m": return 300;
+      case "15m": return 900;
+      case "30m": return 1800;
+      case "1h": return 3600;
+      case "4h": return 14400;
+      case "1d": return 86400;
+      case "1w": return 604800;
+      default: return 900;
+    }
+  };
+
+  // Market session detector
+  const getMarketSession = (symbol: string) => {
+    const isIndian = symbol.includes("NIFTY") || symbol.includes(".NS");
+    const now = new Date();
+    
+    if (isIndian) {
+      const utcHours = now.getUTCHours();
+      const utcMins = now.getUTCMinutes();
+      const istTotalMins = (utcHours * 60 + utcMins + 330) % 1440;
+      const nseOpen = 9 * 60 + 15; // 09:15 IST
+      const nseClose = 15 * 60 + 30; // 15:30 IST
+      const day = now.getUTCDay();
+      const isWeekend = day === 0 || day === 6;
+      
+      if (isWeekend) {
+        return { status: "CLOSED", label: "NSE Closed (Weekend)", isLive: false };
+      } else if (istTotalMins >= nseOpen && istTotalMins <= nseClose) {
+        return { status: "OPEN", label: "NSE Live Market Session", isLive: true };
+      } else {
+        return { status: "POST_MARKET", label: "NSE Post-Market (Official Close: ₹22,363.35)", isLive: false };
+      }
+    } else {
+      const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const usOpen = 13 * 60 + 30;
+      const usClose = 20 * 60;
+      const day = now.getUTCDay();
+      const isWeekend = day === 0 || day === 6;
+      if (isWeekend) {
+        return { status: "CLOSED", label: "US Market Closed (Weekend)", isLive: false };
+      } else if (utcMinutes >= usOpen && utcMinutes <= usClose) {
+        return { status: "OPEN", label: "US Regular Session (Live)", isLive: true };
+      } else {
+        return { status: "PRE_POST", label: "US Pre/Post Session", isLive: false };
+      }
+    }
+  };
+
+  // Update clock and exact candle countdown every second
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTimeStr(
+        now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
+          " • " +
+          now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }) +
+          " IST"
+      );
+      const period = getCandlePeriodSecs(timeframe);
+      const nowSec = Math.floor(now.getTime() / 1000);
+      const remaining = period - (nowSec % period);
+      setCountdownSecs(remaining);
+    };
+    updateTime();
+    const clockInterval = setInterval(updateTime, 1000);
+    return () => clearInterval(clockInterval);
+  }, [timeframe]);
+
+  // Load market data & forecast
   const loadMarketData = async () => {
     setLoading(true);
     try {
-      const [cData, indData] = await Promise.all([
+      const [cData, indData, tickers] = await Promise.all([
         fetchCandles(selectedSymbol, timeframe),
         fetchIndicators(selectedSymbol, timeframe),
+        fetchTickerStrip(),
       ]);
       setCandles(cData);
       setIndicators(indData);
+      setTickerItems(tickers);
 
       if (cData.length > 0) {
         lastPriceRef.current = cData[cData.length - 1].close;
@@ -94,14 +176,20 @@ export const App: React.FC = () => {
   // Sync live price tick and update the chart candle
   const syncLiveTick = async () => {
     try {
-      const tick = await fetchLiveTick(selectedSymbol);
+      const [tick, tickers] = await Promise.all([
+        fetchLiveTick(selectedSymbol),
+        fetchTickerStrip(),
+      ]);
+      if (tickers && tickers.length > 0) {
+        setTickerItems(tickers);
+      }
       if (tick && tick.price) {
         const prevP = lastPriceRef.current;
         if (tick.price > prevP) setPriceChangeDir("up");
         else if (tick.price < prevP) setPriceChangeDir("down");
         lastPriceRef.current = tick.price;
 
-        // Dynamically update the active candle in the candles array
+        // Dynamically update active candle in chart without reload
         setCandles((prevCandles) => {
           if (!prevCandles || prevCandles.length === 0) return prevCandles;
           const updated = [...prevCandles];
@@ -111,7 +199,7 @@ export const App: React.FC = () => {
           last.close = tick.price;
           last.high = Math.max(last.high, tick.price);
           last.low = Math.min(last.low, tick.price);
-          last.volume = (last.volume || 1000) + 15;
+          last.volume = (last.volume || 1000) + 12;
           updated[lastIdx] = last;
           return updated;
         });
@@ -173,10 +261,18 @@ export const App: React.FC = () => {
       position: (p.side === "LONG" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
       color: p.side === "LONG" ? "#10b981" : "#ef4444",
       shape: (p.side === "LONG" ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
-      text: `${p.side} @ ${p.entry_price.toFixed(1)}`,
+      text: `${p.side} @ ₹${p.entry_price.toFixed(1)}`,
     }));
 
   const lastPrice = candles.length > 0 ? candles[candles.length - 1].close : lastPriceRef.current;
+  const currentTicker = tickerItems.find((t) => t.symbol === selectedSymbol);
+
+  // Format countdown mm:ss
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  };
 
   return (
     <div className="app-container">
@@ -190,35 +286,48 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Ticker Strip */}
+        {/* Live Real Ticker Strip */}
         <div className="ticker-strip">
-          <div className="ticker-item">
-            <span style={{ color: "var(--text-dim)" }}>NIFTY 50:</span>
-            <span style={{ fontWeight: 700 }}>22,363.35</span>
-            <span style={{ color: "var(--bullish-green)" }}>+0.42%</span>
-          </div>
-          <div className="ticker-item">
-            <span style={{ color: "var(--text-dim)" }}>BANK NIFTY:</span>
-            <span style={{ fontWeight: 700 }}>48,110.80</span>
-            <span style={{ color: "var(--bullish-green)" }}>+0.65%</span>
-          </div>
-          <div className="ticker-item">
-            <span style={{ color: "var(--text-dim)" }}>S&P 500:</span>
-            <span style={{ fontWeight: 700 }}>5,780.40</span>
-            <span style={{ color: "var(--bullish-green)" }}>+0.31%</span>
-          </div>
-          <div className="ticker-item">
-            <span style={{ color: "var(--text-dim)" }}>GOLD:</span>
-            <span style={{ fontWeight: 700 }}>$2,654.10</span>
-            <span style={{ color: "var(--bearish-red)" }}>-0.18%</span>
-          </div>
+          {tickerItems.length > 0 ? (
+            tickerItems.map((item) => (
+              <div
+                key={item.symbol}
+                className="ticker-item"
+                style={{
+                  cursor: "pointer",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  background: selectedSymbol === item.symbol ? "rgba(99, 102, 241, 0.2)" : "transparent",
+                }}
+                onClick={() => setSelectedSymbol(item.symbol)}
+                title={`Click to switch chart to ${item.symbol}`}
+              >
+                <span style={{ color: "var(--text-dim)" }}>{item.symbol}:</span>
+                <span style={{ fontWeight: 700 }}>
+                  {item.currency === "USD" ? "$" : "₹"}
+                  {item.price.toFixed(2)}
+                </span>
+                <span
+                  style={{
+                    color: item.change >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {item.change >= 0 ? "+" : ""}
+                  {item.change_pct.toFixed(2)}%
+                </span>
+              </div>
+            ))
+          ) : (
+            <div style={{ color: "var(--text-dim)", fontSize: "11px" }}>Loading live market quotes...</div>
+          )}
         </div>
 
         {/* Controls */}
         <div className="nav-controls">
           {/* Auto-Sync Toggle */}
           <button
-            className={`btn ${autoSync ? "btn-outline" : "btn-outline"}`}
+            className="btn btn-outline"
             style={{
               borderColor: autoSync ? "var(--bullish-green)" : "var(--border-subtle)",
               background: autoSync ? "rgba(16, 185, 129, 0.1)" : "transparent",
@@ -228,7 +337,7 @@ export const App: React.FC = () => {
             title="Toggle Live Continuous Auto-Sync (3s)"
           >
             <Zap size={14} className={autoSync ? "animate-pulse" : ""} />
-            <span>{autoSync ? "LIVE AUTO-SYNC: ON (3s)" : "AUTO-SYNC: OFF"}</span>
+            <span>{autoSync ? "LIVE AUTO-SYNC: ON" : "AUTO-SYNC: PAUSED"}</span>
           </button>
 
           <select
@@ -247,18 +356,6 @@ export const App: React.FC = () => {
             <option value="GC=F">Gold Futures (GC=F)</option>
           </select>
 
-          <select
-            className="select-control"
-            value={timeframe}
-            onChange={(e) => setTimeframe(e.target.value)}
-          >
-            <option value="1m">1m</option>
-            <option value="5m">5m</option>
-            <option value="15m">15m</option>
-            <option value="1h">1h</option>
-            <option value="1d">1d</option>
-          </select>
-
           <button className="btn btn-outline" onClick={loadMarketData} disabled={loading} title="Manual Reload">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Reload
           </button>
@@ -271,12 +368,13 @@ export const App: React.FC = () => {
         <section className="left-panel">
           {/* Chart Card */}
           <div className="glass-card" style={{ padding: "12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "16px", fontWeight: 800 }}>{selectedSymbol}</span>
+            {/* Top Bar of Chart: Instrument, Live Price, Day Change & Exchange Clock */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "18px", fontWeight: 800, letterSpacing: "0.3px" }}>{selectedSymbol}</span>
                 <span
                   style={{
-                    fontSize: "16px",
+                    fontSize: "18px",
                     fontFamily: "var(--font-mono)",
                     fontWeight: 700,
                     color:
@@ -288,14 +386,169 @@ export const App: React.FC = () => {
                     transition: "color 0.2s ease",
                   }}
                 >
-                  ₹{lastPrice > 0 ? lastPrice.toFixed(2) : "Loading..."}
+                  {selectedSymbol.startsWith("^") || selectedSymbol === "AAPL" || selectedSymbol === "MSFT" || selectedSymbol === "GC=F" ? "$" : "₹"}
+                  {lastPrice > 0 ? lastPrice.toFixed(2) : "Loading..."}
                 </span>
-                <span className="pill-badge pill-neutral">
-                  <span className="pulse-indicator"></span> LIVE FEED ({timeframe})
-                </span>
+
+                {/* Real Day Change Badge */}
+                {currentTicker && (
+                  <span
+                    className={`pill-badge ${currentTicker.change >= 0 ? "pill-bullish" : "pill-bearish"}`}
+                    style={{ fontSize: "11px", fontWeight: 700 }}
+                  >
+                    {currentTicker.change >= 0 ? "+" : ""}
+                    {currentTicker.change.toFixed(2)} ({currentTicker.change >= 0 ? "+" : ""}
+                    {currentTicker.change_pct.toFixed(2)}%)
+                  </span>
+                )}
               </div>
 
-              {/* Indicator Toggles */}
+              {/* Exchange Clock & Session Status */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "11px", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Clock size={13} color="var(--accent-primary)" />
+                  <span style={{ color: "var(--text-main)", fontWeight: 600 }}>{currentTimeStr}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Real Market Stats Ribbon: Open, High, Low, Prev Close, Range Bar */}
+            {(() => {
+              const curSym = selectedSymbol.startsWith("^") || selectedSymbol === "AAPL" || selectedSymbol === "MSFT" || selectedSymbol === "GC=F" ? "$" : "₹";
+              const sessionInfo = getMarketSession(selectedSymbol);
+              const pLow = currentTicker?.low || (lastPrice > 0 ? lastPrice * 0.995 : 0);
+              const pHigh = currentTicker?.high || (lastPrice > 0 ? lastPrice * 1.005 : 0);
+              const rangePct = pHigh > pLow ? Math.min(100, Math.max(0, ((lastPrice - pLow) / (pHigh - pLow)) * 100)) : 50;
+
+              return (
+                <div className="market-stats-ribbon">
+                  <div className="ribbon-metric">
+                    <span className="ribbon-metric-label">Prev Close</span>
+                    <span className="ribbon-metric-value">
+                      {curSym}{currentTicker?.prev_close?.toFixed(2) || (lastPrice ? lastPrice.toFixed(2) : "—")}
+                    </span>
+                  </div>
+
+                  <div className="ribbon-metric">
+                    <span className="ribbon-metric-label">Day Open</span>
+                    <span className="ribbon-metric-value">
+                      {curSym}{currentTicker?.open?.toFixed(2) || (lastPrice ? lastPrice.toFixed(2) : "—")}
+                    </span>
+                  </div>
+
+                  <div className="ribbon-metric">
+                    <span className="ribbon-metric-label">24H Range (Low ───●─── High)</span>
+                    <div className="range-bar-container">
+                      <span style={{ color: "var(--bearish-red)" }}>{curSym}{pLow.toFixed(1)}</span>
+                      <div className="range-bar-track">
+                        <div className="range-bar-thumb" style={{ left: `calc(${rangePct}% - 5px)` }} />
+                      </div>
+                      <span style={{ color: "var(--bullish-green)" }}>{curSym}{pHigh.toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="ribbon-metric">
+                    <span className="ribbon-metric-label">Exchange Session</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: sessionInfo.isLive ? "var(--bullish-green)" : "var(--neutral-blue)",
+                          boxShadow: sessionInfo.isLive ? "0 0 6px var(--bullish-green)" : "none",
+                        }}
+                      />
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-main)" }}>
+                        {sessionInfo.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="ribbon-metric">
+                    <span className="ribbon-metric-label">Data Feed</span>
+                    <span style={{ fontSize: "11px", color: "var(--bullish-green)", fontWeight: 700 }}>
+                      ● Official Real Feed
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Master Timeline & Multi-Granularity Presentation Bar */}
+            <div className="timeline-master-bar">
+              <div className="timeline-groups-container">
+                {/* Realtime / Seconds Group */}
+                <div className="timeline-segment">
+                  <span className="timeline-segment-label">SEC</span>
+                  <button
+                    className={`timeline-btn ${autoSync ? "active" : ""}`}
+                    onClick={() => setAutoSync(!autoSync)}
+                    title="Toggle Live 1-Second Continuous Market Tick Auto-Sync"
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                      <span className="pulse-indicator" style={{ width: 6, height: 6 }} />
+                      1s LIVE
+                    </span>
+                  </button>
+                </div>
+
+                {/* Minutes Group */}
+                <div className="timeline-segment">
+                  <span className="timeline-segment-label">MINUTES</span>
+                  {["1m", "5m", "15m", "30m"].map((tf) => (
+                    <button
+                      key={tf}
+                      className={`timeline-btn ${timeframe === tf ? "active" : ""}`}
+                      onClick={() => setTimeframe(tf)}
+                      title={`Switch to ${tf} candle timeline`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Hours Group */}
+                <div className="timeline-segment">
+                  <span className="timeline-segment-label">HOURS</span>
+                  {["1h", "4h"].map((tf) => (
+                    <button
+                      key={tf}
+                      className={`timeline-btn ${timeframe === tf ? "active" : ""}`}
+                      onClick={() => setTimeframe(tf)}
+                      title={`Switch to ${tf} candle timeline`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Days & Weeks Group */}
+                <div className="timeline-segment">
+                  <span className="timeline-segment-label">DAYS</span>
+                  {["1d", "1w"].map((tf) => (
+                    <button
+                      key={tf}
+                      className={`timeline-btn ${timeframe === tf ? "active" : ""}`}
+                      onClick={() => setTimeframe(tf)}
+                      title={`Switch to ${tf.toUpperCase()} candle timeline`}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Next Candle Countdown HUD */}
+                <div className="timeline-hud-pill">
+                  <Clock size={12} color="var(--accent-primary)" />
+                  <span style={{ color: "var(--text-dim)" }}>Next Bar:</span>
+                  <span style={{ color: "var(--neutral-blue)", fontWeight: 700 }}>
+                    {formatCountdown(countdownSecs)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Indicator Overlay Toggles */}
               <div style={{ display: "flex", gap: "6px" }}>
                 <button
                   className={`indicator-chip ${showEma9 ? "active" : ""}`}

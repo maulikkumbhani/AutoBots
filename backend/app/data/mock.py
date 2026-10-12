@@ -58,8 +58,23 @@ class MockDataProvider(BaseDataProvider):
         sym_seed = (self.seed + abs(hash(symbol)) % 10000) % 2**32
         rng = np.random.default_rng(sym_seed)
 
-        # Initial price base
-        base_price = 25000.0 if "NIFTY" in symbol.upper() else (50000.0 if "BANK" in symbol.upper() else 2500.0)
+        # Initial price base anchored to real market values
+        if "BANK" in symbol.upper():
+            base_price = 54918.0
+        elif "NIFTY" in symbol.upper():
+            base_price = 22363.35
+        elif "GSPC" in symbol.upper() or "S&P" in symbol.upper():
+            base_price = 5850.0
+        elif "IXIC" in symbol.upper() or "NDX" in symbol.upper() or "NASDAQ" in symbol.upper():
+            base_price = 20400.0
+        elif "AAPL" in symbol.upper():
+            base_price = 232.0
+        elif "MSFT" in symbol.upper():
+            base_price = 420.0
+        elif "GC=F" in symbol.upper() or "GOLD" in symbol.upper():
+            base_price = 2650.0
+        else:
+            base_price = 1500.0
         
         # Returns with slight drift and realistic intraday volatility
         returns = rng.normal(loc=0.0001, scale=0.003, size=n)

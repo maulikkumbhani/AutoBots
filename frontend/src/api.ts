@@ -7,9 +7,16 @@ import {
   Position,
   PortfolioSummary,
   AccuracyDashboardData,
+  TickerItem,
 } from "./types";
 
 const API_BASE = "http://localhost:8000/api/v1";
+
+export async function fetchTickerStrip(): Promise<TickerItem[]> {
+  const res = await fetch(`${API_BASE}/markets/ticker-strip`);
+  if (!res.ok) throw new Error("Failed to fetch ticker strip");
+  return res.json();
+}
 
 export async function fetchInstruments() {
   const res = await fetch(`${API_BASE}/markets/instruments`);

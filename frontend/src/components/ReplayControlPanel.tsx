@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ReplayResult } from "../types";
 import { executeHistoricalReplay } from "../api";
-import { History, Play, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
+import { History, Play, CheckCircle2, XCircle, Clock, Calendar, FastForward } from "lucide-react";
 
 interface Props {
   symbol: string;
@@ -9,11 +9,42 @@ interface Props {
 }
 
 export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }) => {
-  const [cutoffDate, setCutoffDate] = useState("2026-10-09T14:30");
+  const [cutoffDate, setCutoffDate] = useState("2026-10-12T14:30");
   const [horizon, setHorizon] = useState("60m");
   const [modelType, setModelType] = useState("ENSEMBLE");
   const [loading, setLoading] = useState(false);
   const [lastReplay, setLastReplay] = useState<ReplayResult | null>(null);
+
+  const setPreset = (preset: "15m" | "1h" | "open" | "yesterday" | "5d" | "1mo") => {
+    const now = new Date();
+    let target = new Date();
+
+    if (preset === "15m") {
+      target = new Date(now.getTime() - 15 * 60 * 1000);
+    } else if (preset === "1h") {
+      target = new Date(now.getTime() - 60 * 60 * 1000);
+    } else if (preset === "open") {
+      // 09:15 AM today
+      target.setHours(9, 15, 0, 0);
+    } else if (preset === "yesterday") {
+      target.setDate(target.getDate() - 1);
+      target.setHours(15, 30, 0, 0);
+    } else if (preset === "5d") {
+      target.setDate(target.getDate() - 5);
+      target.setHours(14, 30, 0, 0);
+    } else if (preset === "1mo") {
+      target.setMonth(target.getMonth() - 1);
+      target.setHours(14, 30, 0, 0);
+    }
+
+    // Format YYYY-MM-DDTHH:mm
+    const year = target.getFullYear();
+    const month = String(target.getMonth() + 1).padStart(2, "0");
+    const day = String(target.getDate()).padStart(2, "0");
+    const hours = String(target.getHours()).padStart(2, "0");
+    const minutes = String(target.getMinutes()).padStart(2, "0");
+    setCutoffDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+  };
 
   const handleRunReplay = async () => {
     setLoading(true);
@@ -39,6 +70,22 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
         <span className="pill-badge pill-neutral">ZERO LOOK-AHEAD VERIFIED</span>
       </div>
 
+      {/* Quick Timeline Jump Presets */}
+      <div style={{ marginBottom: "12px" }}>
+        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+          <FastForward size={12} color="var(--accent-primary)" />
+          <span>Quick Timeline Jump Presets</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          <button className="indicator-chip" onClick={() => setPreset("15m")}>15m Ago</button>
+          <button className="indicator-chip" onClick={() => setPreset("1h")}>1 Hour Ago</button>
+          <button className="indicator-chip" onClick={() => setPreset("open")}>Today's Open (09:15)</button>
+          <button className="indicator-chip" onClick={() => setPreset("yesterday")}>Yesterday Close</button>
+          <button className="indicator-chip" onClick={() => setPreset("5d")}>5 Days Ago</button>
+          <button className="indicator-chip" onClick={() => setPreset("1mo")}>1 Month Ago</button>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr auto", gap: "12px", alignItems: "end", marginBottom: "14px" }}>
         <div>
           <label style={{ display: "block", fontSize: "11px", color: "var(--text-dim)", marginBottom: "4px" }}>
@@ -58,12 +105,12 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
             Evaluation Horizon
           </label>
           <select className="select-control" style={{ width: "100%" }} value={horizon} onChange={(e) => setHorizon(e.target.value)}>
-            <option value="5m">Next 5 Minutes</option>
-            <option value="15m">Next 15 Minutes</option>
-            <option value="30m">Next 30 Minutes</option>
+            <option value="5m">Next 5 Minutes (5m)</option>
+            <option value="15m">Next 15 Minutes (15m)</option>
+            <option value="30m">Next 30 Minutes (30m)</option>
             <option value="60m">Next 60 Minutes (1h)</option>
-            <option value="1d">Next Trading Day</option>
-            <option value="5d">Next 5 Trading Days</option>
+            <option value="1d">Next Trading Day (1D)</option>
+            <option value="5d">Next 5 Trading Days (5D)</option>
           </select>
         </div>
 
@@ -73,7 +120,7 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
           </label>
           <select className="select-control" style={{ width: "100%" }} value={modelType} onChange={(e) => setModelType(e.target.value)}>
             <option value="ENSEMBLE">Calibrated Ensemble</option>
-            <option value="STATISTICAL">Statistical TA</option>
+            <option value="STATISTICAL">Statistical TA (EMA+RSI+MACD)</option>
             <option value="ML_BASELINE">Random Forest Classifier</option>
             <option value="GEMINI_FLASH">Gemini Flash Reasoner</option>
           </select>
@@ -97,7 +144,7 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
             <div style={{ fontSize: "13px", fontWeight: 700 }}>
-              Replay Result for {lastReplay.symbol} @ Cutoff Price: {lastReplay.as_of_price.toFixed(2)}
+              Replay Result for {lastReplay.symbol} @ Cutoff Price: ₹{lastReplay.as_of_price.toFixed(2)}
             </div>
             {lastReplay.is_correct === true && (
               <span className="pill-badge pill-bullish">
@@ -143,7 +190,7 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
             <div>
               <div style={{ color: "var(--text-dim)", fontSize: "10px" }}>REALIZED PRICE</div>
               <div style={{ fontWeight: 700 }}>
-                {lastReplay.realized_price ? lastReplay.realized_price.toFixed(2) : "N/A"}
+                {lastReplay.realized_price ? `₹${lastReplay.realized_price.toFixed(2)}` : "N/A"}
               </div>
             </div>
           </div>

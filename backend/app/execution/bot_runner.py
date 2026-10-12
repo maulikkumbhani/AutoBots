@@ -146,13 +146,14 @@ class AutoTradingBot:
         candle = self.live_candles.get(symbol)
 
         if not price or not candle:
-            default_p = 22363.35 if "NIFTY" in symbol else 100.0
+            # Anchor to real market close
+            default_p = 22363.35 if "NIFTY" in symbol else (54918.0 if "BANK" in symbol else 100.0)
             price = default_p
             candle = {
                 "timestamp": now.isoformat(),
                 "open": default_p,
-                "high": default_p * 1.001,
-                "low": default_p * 0.999,
+                "high": default_p,
+                "low": default_p,
                 "close": default_p,
                 "volume": 5000.0,
             }
@@ -168,7 +169,7 @@ class AutoTradingBot:
         """
         Executes one full automated bot cycle:
         1. Fetches latest candles or uses cached live df.
-        2. Simulates realistic market micro-tick movements.
+        2. Simulates realistic market micro-tick movements anchored to real close.
         3. Updates all open positions, triggers SL, TP, Trailing Stop.
         4. Evaluates strategy signals and places new orders automatically.
         """
@@ -197,14 +198,13 @@ class AutoTradingBot:
             return log_entry
 
         # 2. Live price tick generation:
-        # Get base close from latest candle
+        # Strictly anchored to real market close from latest candle
         base_close = float(df.iloc[-1]["close"])
-        cur_price = self.live_prices.get(self.symbol, base_close)
 
-        # Micro-fluctuation between cycles: +/- 0.03% to 0.12% realistic volatility
-        # Slightly biased by current momentum
-        delta_pct = random.gauss(0.0001, 0.0006)
-        cur_price = round(cur_price * (1.0 + delta_pct), 2)
+        # Micro-fluctuation around base_close (mean-reverting tiny spread variation)
+        # Prevents runaway drift while providing responsive live ticking
+        spread_noise = random.uniform(-0.0003, 0.0003)
+        cur_price = round(base_close * (1.0 + spread_noise), 2)
         self.live_prices[self.symbol] = cur_price
 
         # Update active candle
