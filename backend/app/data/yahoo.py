@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 from typing import Dict
 import pandas as pd
@@ -50,19 +50,38 @@ class YahooFinanceProvider(BaseDataProvider):
         normalized_sym = self.normalize_symbol(symbol)
         interval = self.TIMEFRAME_MAP.get(timeframe, "15m")
 
-        # Run blocking yfinance call in threadpool
+        def _fetch_history():
+            ticker = yf.Ticker(normalized_sym)
+            # Choose period based on timeframe
+            if timeframe in ["1m", "5m"]:
+                p = "5d"
+            elif timeframe in ["15m", "1h"]:
+                p = "1mo"
+            else:
+                p = "6mo"
+            
+            try:
+                hist = ticker.history(period=p, interval=interval, auto_adjust=False)
+                if not hist.empty:
+                    return hist
+            except Exception:
+                pass
+            
+            # Fallback to download
+            try:
+                return yf.download(
+                    tickers=normalized_sym,
+                    start=start_time.strftime("%Y-%m-%d"),
+                    end=(end_time + timedelta(days=1)).strftime("%Y-%m-%d"),
+                    interval=interval,
+                    progress=False,
+                    auto_adjust=False,
+                )
+            except Exception:
+                return pd.DataFrame()
+
         loop = asyncio.get_running_loop()
-        df = await loop.run_in_executor(
-            None,
-            lambda: yf.download(
-                tickers=normalized_sym,
-                start=start_time.strftime("%Y-%m-%d"),
-                end=end_time.strftime("%Y-%m-%d"),
-                interval=interval,
-                progress=False,
-                auto_adjust=False,
-            ),
-        )
+        df = await loop.run_in_executor(None, _fetch_history)
 
         if df.empty:
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -92,8 +111,8 @@ class YahooFinanceProvider(BaseDataProvider):
         else:
             df["timestamp"] = df["timestamp"].dt.tz_convert("UTC")
 
-        # Filter strictly within requested range
-        df = df[(df["timestamp"] >= start_time) & (df["timestamp"] <= end_time)]
+        # Clean rows
+        df = df.dropna(subset=["close"])
         return df[["timestamp", "open", "high", "low", "close", "volume"]].sort_values("timestamp").reset_index(drop=True)
 
     async def fetch_latest_quote(self, symbol: str) -> dict:

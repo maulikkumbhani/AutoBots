@@ -12,6 +12,7 @@ from app.api.routes_replay import router as replay_router
 from app.api.routes_predictions import router as predictions_router
 from app.api.routes_analytics import router as analytics_router
 from app.api.routes_paper_trading import router as paper_router
+from app.api.routes_bot import router as bot_router
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ app.include_router(replay_router, prefix=settings.API_V1_STR)
 app.include_router(predictions_router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router, prefix=settings.API_V1_STR)
 app.include_router(paper_router, prefix=settings.API_V1_STR)
+app.include_router(bot_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")
