@@ -59,22 +59,65 @@ class MockDataProvider(BaseDataProvider):
         rng = np.random.default_rng(sym_seed)
 
         # Initial price base anchored to real market values
-        if "BANK" in symbol.upper():
-            base_price = 54918.0
-        elif "NIFTY" in symbol.upper():
-            base_price = 22363.35
-        elif "GSPC" in symbol.upper() or "S&P" in symbol.upper():
-            base_price = 5850.0
-        elif "IXIC" in symbol.upper() or "NDX" in symbol.upper() or "NASDAQ" in symbol.upper():
-            base_price = 20400.0
-        elif "AAPL" in symbol.upper():
-            base_price = 232.0
-        elif "MSFT" in symbol.upper():
-            base_price = 420.0
-        elif "GC=F" in symbol.upper() or "GOLD" in symbol.upper():
-            base_price = 2650.0
+        sym_u = symbol.upper()
+        if "BANK" in sym_u:
+            base_price = 55488.0
+        elif "NIFTY" in sym_u:
+            base_price = 22888.0
+        elif "SENSEX" in sym_u or "BSESN" in sym_u:
+            base_price = 73850.0
+        elif "RELIANCE" in sym_u:
+            base_price = 1202.0
+        elif "HDFC" in sym_u:
+            base_price = 712.0
+        elif "TCS" in sym_u:
+            base_price = 2460.0
+        elif "INFY" in sym_u:
+            base_price = 1130.0
+        elif "ICICI" in sym_u:
+            base_price = 1380.0
+        elif "SBIN" in sym_u:
+            base_price = 974.0
+        elif "BHARTI" in sym_u:
+            base_price = 1750.0
+        elif "LT" in sym_u:
+            base_price = 3600.0
+        elif "KOTAK" in sym_u:
+            base_price = 1780.0
+        elif "GBP" in sym_u:
+            base_price = 1.3348
+        elif "EUR" in sym_u:
+            base_price = 1.1218
+        elif "JPY" in sym_u:
+            base_price = 158.15
+        elif "INR" in sym_u or "USDINR" in sym_u:
+            base_price = 94.93
+        elif "GC=F" in sym_u or "GOLD" in sym_u:
+            base_price = 4130.0
+        elif "SI=F" in sym_u or "SILVER" in sym_u:
+            base_price = 57.2
+        elif "CL=F" in sym_u or "OIL" in sym_u:
+            base_price = 100.7
+        elif "GSPC" in sym_u or "S&P" in sym_u:
+            base_price = 7690.0
+        elif "IXIC" in sym_u or "NDX" in sym_u or "NASDAQ" in sym_u:
+            base_price = 26430.0
+        elif "DJI" in sym_u or "DOW" in sym_u or "US30" in sym_u:
+            base_price = 51975.0
+        elif "BTC" in sym_u or "BITCOIN" in sym_u:
+            base_price = 81500.0
+        elif "ETH" in sym_u or "ETHEREUM" in sym_u:
+            base_price = 2600.0
+        elif "AAPL" in sym_u:
+            base_price = 342.0
+        elif "MSFT" in sym_u:
+            base_price = 490.0
+        elif "NVDA" in sym_u:
+            base_price = 217.0
+        elif "TSLA" in sym_u:
+            base_price = 220.0
         else:
-            base_price = 1500.0
+            base_price = 1000.0
         
         # Returns with slight drift and realistic intraday volatility
         returns = rng.normal(loc=0.0001, scale=0.003, size=n)

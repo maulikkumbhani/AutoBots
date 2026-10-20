@@ -13,6 +13,7 @@ from app.api.routes_predictions import router as predictions_router
 from app.api.routes_analytics import router as analytics_router
 from app.api.routes_paper_trading import router as paper_router
 from app.api.routes_bot import router as bot_router
+from app.api.routes_mt5 import router as mt5_router
 
 
 @asynccontextmanager
@@ -20,7 +21,17 @@ async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Always start auto-trading bot on startup by default (user can toggle/stop anytime)
+    from app.execution.bot_runner import trading_bot
+    await trading_bot.start()
+
     yield
+
+    try:
+        await trading_bot.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -47,6 +58,7 @@ app.include_router(predictions_router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router, prefix=settings.API_V1_STR)
 app.include_router(paper_router, prefix=settings.API_V1_STR)
 app.include_router(bot_router, prefix=settings.API_V1_STR)
+app.include_router(mt5_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")

@@ -14,6 +14,8 @@ class BotConfigUpdate(BaseModel):
     stop_loss_pct: Optional[float] = None
     trailing_stop_pct: Optional[float] = None
     min_confidence: Optional[float] = None
+    execution_mode: Optional[str] = None  # "PAPER" or "MT5_LIVE"
+    mt5_auto_trade: Optional[bool] = None
 
 
 @router.get("/status")
@@ -22,11 +24,17 @@ async def get_bot_status():
     return trading_bot.get_config()
 
 
+class BotStartRequest(BaseModel):
+    symbol: Optional[str] = None
+
+
 @router.post("/start")
-async def start_bot():
-    """Activates automated trading bot in continuous background execution."""
+async def start_bot(req: Optional[BotStartRequest] = None):
+    """Activates automated trading bot in continuous background execution for the active chart symbol."""
+    if req and req.symbol:
+        trading_bot.update_config({"symbol": req.symbol})
     await trading_bot.start()
-    return {"message": "Auto-trading bot started successfully", "status": trading_bot.get_config()}
+    return {"message": f"Auto-trading bot started for {trading_bot.symbol}", "status": trading_bot.get_config()}
 
 
 @router.post("/stop")

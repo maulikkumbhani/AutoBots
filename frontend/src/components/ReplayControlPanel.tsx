@@ -74,13 +74,27 @@ export const ReplayControlPanel: React.FC<Props> = ({ symbol, onReplayExecuted }
       <div style={{ marginBottom: "12px" }}>
         <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
           <FastForward size={12} color="var(--accent-primary)" />
-          <span>Quick Timeline Jump Presets</span>
+          <span>Quick Timeline Jump & Walk-Forward Testing Presets</span>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+          <button
+            className="btn btn-sm btn-primary"
+            style={{ fontSize: "11px", background: "linear-gradient(135deg, #6366f1, #10b981)", border: "none" }}
+            onClick={() => {
+              setCutoffDate("2026-10-19T09:15");
+              setHorizon("1d");
+              setTimeout(() => {
+                handleRunReplay();
+              }, 50);
+            }}
+            title="Backtest model at Oct 19 market open to predict today's price action"
+          >
+            ⚡ Test Oct 19 → Today Flow
+          </button>
           <button className="indicator-chip" onClick={() => setPreset("15m")}>15m Ago</button>
           <button className="indicator-chip" onClick={() => setPreset("1h")}>1 Hour Ago</button>
           <button className="indicator-chip" onClick={() => setPreset("open")}>Today's Open (09:15)</button>
-          <button className="indicator-chip" onClick={() => setPreset("yesterday")}>Yesterday Close</button>
+          <button className="indicator-chip" onClick={() => setPreset("yesterday")}>Yesterday (Oct 19 Close)</button>
           <button className="indicator-chip" onClick={() => setPreset("5d")}>5 Days Ago</button>
           <button className="indicator-chip" onClick={() => setPreset("1mo")}>1 Month Ago</button>
         </div>

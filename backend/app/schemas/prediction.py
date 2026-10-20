@@ -59,5 +59,10 @@ class ForecastResponse(BaseModel):
     realized_price: Optional[float] = None
     realized_return_pct: Optional[float] = None
     is_correct: Optional[bool] = None
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    estimated_target_hit_time: Optional[datetime] = None
+    estimated_seconds_to_hit: Optional[int] = None
+    price_velocity_pts_per_sec: Optional[float] = None
 
     model_config = {"from_attributes": True}

@@ -8,6 +8,7 @@ import {
   PortfolioSummary,
   AccuracyDashboardData,
   TickerItem,
+  InstrumentSummary,
 } from "./types";
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -18,7 +19,7 @@ export async function fetchTickerStrip(): Promise<TickerItem[]> {
   return res.json();
 }
 
-export async function fetchInstruments() {
+export async function fetchInstruments(): Promise<InstrumentSummary[]> {
   const res = await fetch(`${API_BASE}/markets/instruments`);
   if (!res.ok) throw new Error("Failed to fetch instruments");
   return res.json();
@@ -91,8 +92,12 @@ export async function fetchBotStatus(): Promise<BotStatus> {
   return res.json();
 }
 
-export async function startBot(): Promise<any> {
-  const res = await fetch(`${API_BASE}/bot/start`, { method: "POST" });
+export async function startBot(symbol?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/bot/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(symbol ? { symbol } : {}),
+  });
   if (!res.ok) throw new Error("Failed to start bot");
   return res.json();
 }
@@ -131,8 +136,137 @@ export async function fetchPositions(): Promise<Position[]> {
   return res.json();
 }
 
+export async function closeAllPositions(): Promise<any> {
+  const res = await fetch(`${API_BASE}/paper/close-all`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to close all positions");
+  return res.json();
+}
+
+export async function closeSinglePosition(positionId: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/paper/positions/${positionId}/close`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to close position");
+  return res.json();
+}
+
+export async function resetPaperTrading(): Promise<any> {
+  const res = await fetch(`${API_BASE}/paper/reset`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to reset paper trading");
+  return res.json();
+}
+
+export async function executePaperOrder(order: {
+  symbol: string;
+  side: "BUY" | "SELL";
+  order_type: "MARKET" | "LIMIT";
+  quantity: number;
+  stop_loss?: number;
+  take_profit?: number;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/paper/orders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...order, portfolio_id: 1 }),
+  });
+  if (!res.ok) throw new Error("Failed to execute paper order");
+  return res.json();
+}
+
+export async function fetchPredictionRecords(symbol: string): Promise<{
+  symbol: string;
+  summary: {
+    total_predictions: number;
+    success_count: number;
+    failed_count: number;
+    active_count: number;
+    win_rate_pct: number;
+    current_price: number;
+  };
+  records: ForecastResponse[];
+}> {
+  const res = await fetch(`${API_BASE}/predictions/records?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch prediction records");
+  return res.json();
+}
+
 export async function fetchAccuracyDashboard(): Promise<AccuracyDashboardData> {
   const res = await fetch(`${API_BASE}/analytics/accuracy-dashboard`);
   if (!res.ok) throw new Error("Failed to fetch accuracy dashboard");
+  return res.json();
+}
+
+export async function fetchMultiModelAnalysis(symbol: string, horizon = "10m"): Promise<any> {
+  const res = await fetch(`${API_BASE}/predictions/multi-model?symbol=${encodeURIComponent(symbol)}&horizon=${horizon}`);
+  if (!res.ok) throw new Error("Failed to fetch multi-model analysis");
+  return res.json();
+}
+
+export async function trainCustomModel(symbol: string, daysBack = 30): Promise<any> {
+  const res = await fetch(`${API_BASE}/predictions/custom-model/train?symbol=${encodeURIComponent(symbol)}&days_back=${daysBack}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to train custom model");
+  return res.json();
+}
+
+export async function fetchTradeHistory(
+  period = "DAY",
+  symbol?: string,
+  startDate?: string,
+  endDate?: string
+): Promise<any> {
+  const params = new URLSearchParams();
+  params.set("period", period);
+  if (symbol && symbol !== "ALL") params.set("symbol", symbol);
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+
+  const res = await fetch(`${API_BASE}/paper/trades-history?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch trade history");
+  return res.json();
+}
+
+export async function fetchMT5Status(): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/status`);
+  if (!res.ok) throw new Error("Failed to fetch MT5 status");
+  return res.json();
+}
+
+export async function updateMT5Config(config: {
+  enabled?: boolean;
+  server?: string;
+  account_id?: string;
+  default_lot_size?: number;
+  magic_number?: number;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error("Failed to update MT5 config");
+  return res.json();
+}
+
+export async function sendManualMT5Order(order: {
+  symbol: string;
+  side: "BUY" | "SELL";
+  lots?: number;
+  price?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  strategy?: string;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/manual-execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  });
+  if (!res.ok) throw new Error("Failed to send manual MT5 order");
+  return res.json();
+}
+
+export async function fetchMT5EACode(): Promise<{ filename: string; code: string }> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/ea-code`);
+  if (!res.ok) throw new Error("Failed to fetch MT5 EA code");
   return res.json();
 }

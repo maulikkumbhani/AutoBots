@@ -14,15 +14,43 @@ mock_provider = MockDataProvider()
 yahoo_provider = YahooFinanceProvider()
 
 INSTRUMENTS_METADATA = [
+    # Indian Indices & Equities (NSE/BSE)
     {"id": 1, "symbol": "NIFTY 50", "name": "Nifty 50 Index", "exchange": "NSE", "asset_class": "INDEX", "currency": "INR", "tick_size": 0.05, "lot_size": 25},
     {"id": 2, "symbol": "BANK NIFTY", "name": "Nifty Bank Index", "exchange": "NSE", "asset_class": "INDEX", "currency": "INR", "tick_size": 0.05, "lot_size": 15},
-    {"id": 3, "symbol": "RELIANCE.NS", "name": "Reliance Industries Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
-    {"id": 4, "symbol": "HDFCBANK.NS", "name": "HDFC Bank Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
-    {"id": 5, "symbol": "^GSPC", "name": "S&P 500 Index", "exchange": "NYSE", "asset_class": "INDEX", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
-    {"id": 6, "symbol": "^IXIC", "name": "Nasdaq Composite", "exchange": "NASDAQ", "asset_class": "INDEX", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
-    {"id": 7, "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
-    {"id": 8, "symbol": "MSFT", "name": "Microsoft Corp.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
-    {"id": 9, "symbol": "GC=F", "name": "Gold Futures", "exchange": "MCX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.10, "lot_size": 1},
+    {"id": 3, "symbol": "SENSEX", "name": "BSE Sensex Index", "exchange": "BSE", "asset_class": "INDEX", "currency": "INR", "tick_size": 0.05, "lot_size": 10},
+    {"id": 4, "symbol": "RELIANCE.NS", "name": "Reliance Industries Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 5, "symbol": "HDFCBANK.NS", "name": "HDFC Bank Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 6, "symbol": "TCS.NS", "name": "Tata Consultancy Services", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 7, "symbol": "INFY.NS", "name": "Infosys Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 8, "symbol": "ICICIBANK.NS", "name": "ICICI Bank Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 9, "symbol": "SBIN.NS", "name": "State Bank of India", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 10, "symbol": "BHARTIARTL.NS", "name": "Bharti Airtel Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 11, "symbol": "LT.NS", "name": "Larsen & Toubro Ltd", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+    {"id": 12, "symbol": "KOTAKBANK.NS", "name": "Kotak Mahindra Bank", "exchange": "NSE", "asset_class": "STOCK", "currency": "INR", "tick_size": 0.05, "lot_size": 1},
+
+    # Forex (MT5 Major Pairs)
+    {"id": 13, "symbol": "GBP/USD", "name": "British Pound / US Dollar (MT5)", "exchange": "FOREX", "asset_class": "FOREX", "currency": "USD", "tick_size": 0.0001, "lot_size": 1000},
+    {"id": 14, "symbol": "EUR/USD", "name": "Euro / US Dollar (MT5)", "exchange": "FOREX", "asset_class": "FOREX", "currency": "USD", "tick_size": 0.0001, "lot_size": 1000},
+    {"id": 15, "symbol": "USD/JPY", "name": "US Dollar / Japanese Yen", "exchange": "FOREX", "asset_class": "FOREX", "currency": "JPY", "tick_size": 0.01, "lot_size": 1000},
+    {"id": 16, "symbol": "USD/INR", "name": "US Dollar / Indian Rupee", "exchange": "FOREX", "asset_class": "FOREX", "currency": "INR", "tick_size": 0.0025, "lot_size": 1000},
+
+    # Commodities & Metals (Gold Spot & Futures, Silver, Oil)
+    {"id": 17, "symbol": "GOLD", "name": "Gold Spot / Futures (GC=F)", "exchange": "COMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.10, "lot_size": 1},
+    {"id": 18, "symbol": "SILVER", "name": "Silver Futures (SI=F)", "exchange": "COMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 19, "symbol": "CRUDE OIL", "name": "Crude Oil WTI (CL=F)", "exchange": "NYMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+
+    # Global Indices & US Equities
+    {"id": 20, "symbol": "^GSPC", "name": "S&P 500 Index", "exchange": "NYSE", "asset_class": "INDEX", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 21, "symbol": "^IXIC", "name": "Nasdaq Composite", "exchange": "NASDAQ", "asset_class": "INDEX", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 22, "symbol": "DOW JONES", "name": "Dow Jones Industrial Average (US30)", "exchange": "NYSE", "asset_class": "INDEX", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 23, "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 24, "symbol": "MSFT", "name": "Microsoft Corp.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 25, "symbol": "NVDA", "name": "NVIDIA Corp.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+    {"id": 26, "symbol": "TSLA", "name": "Tesla Inc.", "exchange": "NASDAQ", "asset_class": "STOCK", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
+
+    # Crypto (24/7)
+    {"id": 27, "symbol": "BTC-USD", "name": "Bitcoin / USD", "exchange": "CRYPTO", "asset_class": "CRYPTO", "currency": "USD", "tick_size": 0.50, "lot_size": 1},
+    {"id": 28, "symbol": "ETH-USD", "name": "Ethereum / USD", "exchange": "CRYPTO", "asset_class": "CRYPTO", "currency": "USD", "tick_size": 0.10, "lot_size": 1},
 ]
 
 
@@ -37,7 +65,7 @@ from app.execution.bot_runner import trading_bot
 
 @router.get("/candles", response_model=CandleSeriesResponse)
 async def get_candles(
-    symbol: str = Query("NIFTY 50", description="Symbol e.g. NIFTY 50, AAPL, GC=F"),
+    symbol: str = Query("NIFTY 50", description="Symbol e.g. NIFTY 50, GBP/USD, GOLD, AAPL"),
     timeframe: str = Query("15m", description="1m, 5m, 15m, 1h, 1d"),
     days_back: int = Query(15, description="Number of days lookback"),
     provider: str = Query("yahoo", description="Provider: yahoo | mock"),
@@ -54,13 +82,15 @@ async def get_candles(
     except Exception:
         df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
 
-    # Sync live tick if available
+    # Sync live tick only if available and within sensible deviation (prevents giant bar artifact)
     live_price = trading_bot.live_prices.get(symbol)
-    if not df.empty and live_price:
-        last_idx = df.index[-1]
-        df.loc[last_idx, "close"] = live_price
-        df.loc[last_idx, "high"] = max(df.loc[last_idx, "high"], live_price)
-        df.loc[last_idx, "low"] = min(df.loc[last_idx, "low"], live_price)
+    if not df.empty and live_price and live_price > 0:
+        last_close = float(df.iloc[-1]["close"])
+        if abs(live_price - last_close) / max(last_close, 1e-6) < 0.25:
+            last_idx = df.index[-1]
+            df.loc[last_idx, "close"] = live_price
+            df.loc[last_idx, "high"] = max(df.loc[last_idx, "high"], live_price)
+            df.loc[last_idx, "low"] = min(df.loc[last_idx, "low"], live_price)
 
     candles = [
         CandleSchema(
@@ -86,7 +116,7 @@ LAST_TICKER_FETCH: Optional[datetime] = None
 async def get_ticker_strip():
     """
     Returns live real quotes, day change points, and day change %
-    for major Indian indices, US indices, and commodities.
+    for major Indian indices, US indices, commodities, and Forex MT5 pairs.
     """
     global TICKER_CACHE, LAST_TICKER_FETCH
     now = datetime.now(pytz.UTC)
@@ -98,12 +128,16 @@ async def get_ticker_strip():
     symbols = [
         {"display": "NIFTY 50", "yahoo": "^NSEI", "currency": "INR"},
         {"display": "BANK NIFTY", "yahoo": "^NSEBANK", "currency": "INR"},
+        {"display": "SENSEX", "yahoo": "^BSESN", "currency": "INR"},
+        {"display": "GBP/USD", "yahoo": "GBPUSD=X", "currency": "USD"},
+        {"display": "EUR/USD", "yahoo": "EURUSD=X", "currency": "USD"},
+        {"display": "GOLD", "yahoo": "GC=F", "currency": "USD"},
+        {"display": "CRUDE OIL", "yahoo": "CL=F", "currency": "USD"},
         {"display": "RELIANCE.NS", "yahoo": "RELIANCE.NS", "currency": "INR"},
         {"display": "HDFCBANK.NS", "yahoo": "HDFCBANK.NS", "currency": "INR"},
         {"display": "S&P 500", "yahoo": "^GSPC", "currency": "USD"},
         {"display": "NASDAQ", "yahoo": "^IXIC", "currency": "USD"},
-        {"display": "AAPL", "yahoo": "AAPL", "currency": "USD"},
-        {"display": "GOLD", "yahoo": "GC=F", "currency": "USD"},
+        {"display": "BTC-USD", "yahoo": "BTC-USD", "currency": "USD"},
     ]
 
     import yfinance as yf
@@ -144,24 +178,25 @@ async def get_ticker_strip():
                         change = 0.0
                         change_pct = 0.0
                     else:
-                        price = 22363.35 if "NIFTY" in s["display"] else 100.0
-                        prev_close = 22520.45 if "NIFTY" in s["display"] else 100.0
-                        day_open = 22593.20 if "NIFTY" in s["display"] else 100.0
-                        day_high = 22651.10 if "NIFTY" in s["display"] else 100.0
-                        day_low = 22304.45 if "NIFTY" in s["display"] else 100.0
-                        change = -157.10 if "NIFTY" in s["display"] else 0.0
-                        change_pct = -0.70 if "NIFTY" in s["display"] else 0.0
+                        price = 22888.0 if "NIFTY" in s["display"] else 1.3348
+                        prev_close = price
+                        day_open = price
+                        day_high = price
+                        day_low = price
+                        change = 0.0
+                        change_pct = 0.0
                 
+                precision = 4 if ("GBP" in s["display"] or "EUR" in s["display"]) else 2
                 results.append({
                     "symbol": s["display"],
-                    "price": round(float(price), 2),
-                    "change": round(float(change), 2),
+                    "price": round(float(price), precision),
+                    "change": round(float(change), precision),
                     "change_pct": round(float(change_pct), 2),
                     "currency": s["currency"],
-                    "open": round(float(day_open or price), 2),
-                    "high": round(float(day_high or price), 2),
-                    "low": round(float(day_low or price), 2),
-                    "prev_close": round(float(prev_close or price), 2),
+                    "open": round(float(day_open or price), precision),
+                    "high": round(float(day_high or price), precision),
+                    "low": round(float(day_low or price), precision),
+                    "prev_close": round(float(prev_close or price), precision),
                     "timestamp": now.isoformat(),
                 })
             except Exception:
@@ -170,16 +205,17 @@ async def get_ticker_strip():
                 if cached:
                     results.append(cached)
                 else:
+                    precision = 4 if ("GBP" in s["display"] or "EUR" in s["display"]) else 2
                     results.append({
                         "symbol": s["display"],
-                        "price": 22363.35 if "NIFTY" in s["display"] else 100.0,
-                        "change": -157.10 if "NIFTY" in s["display"] else 0.0,
-                        "change_pct": -0.70 if "NIFTY" in s["display"] else 0.0,
+                        "price": 22888.0 if "NIFTY" in s["display"] else 100.0,
+                        "change": 0.0,
+                        "change_pct": 0.0,
                         "currency": s["currency"],
-                        "open": 22593.20 if "NIFTY" in s["display"] else 100.0,
-                        "high": 22651.10 if "NIFTY" in s["display"] else 100.0,
-                        "low": 22304.45 if "NIFTY" in s["display"] else 100.0,
-                        "prev_close": 22520.45 if "NIFTY" in s["display"] else 100.0,
+                        "open": 22888.0 if "NIFTY" in s["display"] else 100.0,
+                        "high": 22888.0 if "NIFTY" in s["display"] else 100.0,
+                        "low": 22888.0 if "NIFTY" in s["display"] else 100.0,
+                        "prev_close": 22888.0 if "NIFTY" in s["display"] else 100.0,
                         "timestamp": now.isoformat(),
                     })
         return results
