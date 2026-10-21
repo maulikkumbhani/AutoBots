@@ -57,3 +57,26 @@ async def trigger_cycle():
     """Manually triggers one algorithmic evaluation and execution cycle."""
     log_entry = await trading_bot.execute_cycle()
     return {"cycle_result": log_entry, "status": trading_bot.get_config()}
+
+
+class ToggleSymbolRequest(BaseModel):
+    symbol: str
+    enabled: bool
+
+
+@router.get("/multi-asset-overview")
+async def get_multi_asset_overview(period: str = "DAY"):
+    """Returns simultaneous multi-asset bot status, live pricing, active positions, and success rates."""
+    return trading_bot.get_multi_asset_overview(period=period)
+
+
+@router.post("/toggle-symbol")
+async def toggle_symbol_status(req: ToggleSymbolRequest):
+    """Enables or disables automated trading for a specific stock in the multi-asset bot engine."""
+    success = trading_bot.toggle_asset(req.symbol, req.enabled)
+    return {
+        "message": f"Symbol {req.symbol} automated trading {'enabled' if req.enabled else 'paused'}",
+        "symbol": req.symbol,
+        "enabled": req.enabled,
+        "success": success,
+    }

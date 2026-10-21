@@ -34,6 +34,7 @@ import { PortfolioBlotter } from "./components/PortfolioBlotter";
 import { AccuracyDashboard } from "./components/AccuracyDashboard";
 import { MultiModelConsensusPanel } from "./components/MultiModelConsensusPanel";
 import { TradeAnalyticsLedger } from "./components/TradeAnalyticsLedger";
+import { MultiAssetDashboard } from "./components/MultiAssetDashboard";
 import {
   TrendingUp,
   RefreshCw,
@@ -62,7 +63,7 @@ import {
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("portfolio");
+  const [activeTab, setActiveTab] = useState<"multibot" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -1064,6 +1065,14 @@ export const App: React.FC = () => {
           {/* Module Tabs Navigation */}
           <div className="tabs-nav">
             <button
+              className={`tab-btn ${activeTab === "multibot" ? "active" : ""}`}
+              onClick={() => setActiveTab("multibot")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Globe size={14} color="#38bdf8" /> 🌐 Multi-Stock AutoBot (24/7 Server)
+              </div>
+            </button>
+            <button
               className={`tab-btn ${activeTab === "portfolio" ? "active" : ""}`}
               onClick={() => setActiveTab("portfolio")}
             >
@@ -1076,7 +1085,7 @@ export const App: React.FC = () => {
               onClick={() => setActiveTab("ledger")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Award size={14} color="#10b981" /> ⚡ Trade Ledger & Period Profit (Day / Month / Year)
+                <Award size={14} color="#10b981" /> ⚡ Trade Ledger & Period Profit
               </div>
             </button>
             <button
@@ -1084,7 +1093,7 @@ export const App: React.FC = () => {
               onClick={() => setActiveTab("models")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Layers size={14} color="var(--accent-primary)" /> Multi-Model Consensus & Candlesticks
+                <Layers size={14} color="var(--accent-primary)" /> Multi-Model Consensus
               </div>
             </button>
             <button
@@ -1093,7 +1102,7 @@ export const App: React.FC = () => {
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Sparkles size={14} color="var(--accent-primary)" />
-                AI Prediction Ledger & Records ({predictionSummary?.total_predictions || predictionRecords.length})
+                AI Predictions ({predictionSummary?.total_predictions || predictionRecords.length})
               </div>
             </button>
             <button
@@ -1101,7 +1110,7 @@ export const App: React.FC = () => {
               onClick={() => setActiveTab("replay")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <History size={14} /> Historical Point-in-Time Replay Lab
+                <History size={14} /> Historical Replay Lab
               </div>
             </button>
             <button
@@ -1109,13 +1118,22 @@ export const App: React.FC = () => {
               onClick={() => setActiveTab("accuracy")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Target size={14} /> Quantitative Statistical Accuracy Dashboard
+                <Target size={14} /> Accuracy Dashboard
               </div>
             </button>
           </div>
 
           {/* Tab Views */}
           <div className="tab-content" style={{ marginTop: "12px" }}>
+            {activeTab === "multibot" && (
+              <MultiAssetDashboard
+                onSelectSymbol={(sym) => {
+                  setSelectedSymbol(sym);
+                  setActiveTab("portfolio");
+                }}
+              />
+            )}
+
             {activeTab === "portfolio" && (
               <div className="space-y-6">
                 <PortfolioBlotter

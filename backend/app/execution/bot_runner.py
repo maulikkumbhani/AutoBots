@@ -45,7 +45,21 @@ class AutoTradingBot:
         self.stop_loss_pct = 0.4         # 0.4% stop loss (2:1 Reward:Risk)
         self.trailing_stop_pct = 0.25    # 0.25% trailing stop
         self.min_confidence = 0.40       # Minimum directional probability to trade
-        self.max_open_positions = 3
+        self.max_open_positions = 6      # Maximum total concurrent portfolio positions
+        self.max_positions_per_asset = 1 # Max position per individual asset
+
+        # Watchlist of multiple simultaneous assets for server daemon execution
+        self.monitored_assets: List[Dict[str, Any]] = [
+            {"symbol": "NIFTY 50", "name": "Nifty 50 Index", "category": "INDEX", "default_qty": 50.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "BANKNIFTY", "name": "Bank Nifty Index", "category": "INDEX", "default_qty": 25.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "GOLD", "name": "Gold Spot / Futures (XAUUSD)", "category": "COMMODITY", "default_qty": 2.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+            {"symbol": "SILVER", "name": "Silver Futures (XAGUSD)", "category": "COMMODITY", "default_qty": 10.0, "best_model": "STATISTICAL", "currency": "USD"},
+            {"symbol": "USD/INR", "name": "USD to Indian Rupee", "category": "FOREX", "default_qty": 1000.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "RELIANCE", "name": "Reliance Industries", "category": "EQUITY", "default_qty": 25.0, "best_model": "ENSEMBLE", "currency": "INR"},
+            {"symbol": "TCS", "name": "Tata Consultancy Services", "category": "EQUITY", "default_qty": 15.0, "best_model": "ENSEMBLE", "currency": "INR"},
+            {"symbol": "CRUDE OIL", "name": "WTI Crude Oil", "category": "COMMODITY", "default_qty": 20.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+        ]
+        self.enabled_assets: Dict[str, bool] = {a["symbol"]: True for a in self.monitored_assets}
 
         self.last_run_time: Optional[datetime] = None
         self.cycle_logs: List[Dict[str, Any]] = []
@@ -264,50 +278,39 @@ class AutoTradingBot:
             "latest_candle": candle,
         }
 
-    async def execute_cycle(self) -> Dict[str, Any]:
-        """
-        Executes one full automated bot cycle:
-        1. Fetches latest candles or uses cached live df.
-        2. Simulates realistic market micro-tick movements anchored to real close.
-        3. Updates all open positions, triggers SL, TP, Trailing Stop.
-        4. Evaluates strategy signals and places new orders automatically.
-        """
-        self.last_run_time = datetime.now(timezone.utc)
-        cycle_timestamp = self.last_run_time.strftime("%H:%M:%S UTC")
+    async def _process_single_asset(self, asset: Dict[str, Any], cycle_timestamp: str) -> Optional[Dict[str, Any]]:
+        sym = asset["symbol"]
+        qty = asset.get("default_qty", self.quantity)
+        best_model = asset.get("best_model", "HIGH_VOLUME_SCALPER")
 
-        # 1. Fetch or cache candles
-        df = self.live_cached_dfs.get(self.symbol)
+        # 1. Fetch or cache candles for this symbol
+        df = self.live_cached_dfs.get(sym)
         if df is None or len(df) < 10:
             try:
                 df = await self.yahoo_provider.fetch_historical_candles(
-                    self.symbol, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
+                    sym, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
                 )
             except Exception:
                 df = None
 
             if df is None or df.empty or len(df) < 10:
                 df = await self.mock_provider.fetch_historical_candles(
-                    self.symbol, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
+                    sym, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
                 )
-            self.live_cached_dfs[self.symbol] = df
+            self.live_cached_dfs[sym] = df
 
-        if df.empty:
-            log_entry = {"time": cycle_timestamp, "action": "NO_DATA", "detail": "Waiting for market feed..."}
-            self.cycle_logs.append(log_entry)
-            return log_entry
+        if df is None or df.empty:
+            return None
 
-        # 2. Live price tick generation:
-        # Strictly anchored to real market close from latest candle
+        # 2. Live price tick generation strictly anchored to real close
         base_close = float(df.iloc[-1]["close"])
-
-        # Micro-fluctuation around base_close (mean-reverting tiny spread variation)
-        # Prevents runaway drift while providing responsive live ticking
-        spread_noise = random.uniform(-0.0003, 0.0003)
-        cur_price = round(base_close * (1.0 + spread_noise), 2)
-        self.live_prices[self.symbol] = cur_price
+        spread_noise = random.uniform(-0.00025, 0.00025)
+        precision = 4 if ("GBP" in sym or "EUR" in sym or "INR" in sym) else 2
+        cur_price = round(base_close * (1.0 + spread_noise), precision)
+        self.live_prices[sym] = cur_price
 
         # Update active candle
-        active_candle = self.live_candles.get(self.symbol)
+        active_candle = self.live_candles.get(sym)
         now_utc = datetime.now(timezone.utc)
         if active_candle is None:
             active_candle = {
@@ -324,17 +327,14 @@ class AutoTradingBot:
             active_candle["low"] = min(active_candle["low"], cur_price)
             active_candle["volume"] += random.randint(50, 400)
             active_candle["timestamp"] = now_utc
-
-        self.live_candles[self.symbol] = active_candle
+        self.live_candles[sym] = active_candle
 
         # 3. Update existing open positions for this symbol
-        open_positions = [p for p in POSITIONS if p["status"] == "OPEN" and p["symbol"] == self.symbol]
-        closed_this_cycle = []
+        open_positions = [p for p in POSITIONS if p["status"] == "OPEN" and p["symbol"] == sym]
         for pos in open_positions:
             updated_pos = self.exec_engine.update_position_candle(pos, active_candle)
             pos.update(updated_pos)
             if pos["status"] == "CLOSED":
-                closed_this_cycle.append(pos)
                 pnl = pos["realized_pnl"]
                 PORTFOLIO_STATE["realized_pnl"] += pnl
                 PORTFOLIO_STATE["current_cash"] += (
@@ -358,45 +358,40 @@ class AutoTradingBot:
                     opened_at=pos.get("opened_at"),
                     closed_at=self.last_run_time,
                 )
-                self.cycle_logs.append({
+                return {
                     "time": cycle_timestamp,
                     "action": "PROFIT_TAKEN" if pnl > 0 else "STOP_HIT",
-                    "detail": f"{pos['close_reason']} on {pos['symbol']} @ {pos['current_price']:.2f}. Realized P&L: {'+' if pnl >= 0 else ''}₹{pnl:.2f}",
+                    "detail": f"{pos['close_reason']} on {pos['symbol']} @ {pos['current_price']:.2f}. P&L: {'+' if pnl >= 0 else ''}₹{pnl:.2f}",
                     "cur_price": cur_price,
-                })
+                    "closed_count": 1,
+                    "symbol": sym,
+                }
 
-        # 4. Check if bot is active and should open a new trade
-        open_count = sum(1 for p in POSITIONS if p["status"] == "OPEN")
-        action_taken = "MONITORING"
-        detail_msg = f"Live Tick: ₹{cur_price:.2f}. Open Positions: {open_count}/{self.max_open_positions}"
-
-        if open_count < self.max_open_positions and self.is_active:
-            # Calculate indicators on past candles + live bar
+        # 4. If bot is active, check if we should enter a new trade for this symbol
+        total_open = sum(1 for p in POSITIONS if p["status"] == "OPEN")
+        if total_open < self.max_open_positions and len(open_positions) < self.max_positions_per_asset and self.is_active:
             df_with_live = df.copy()
-            # Replace last row close with current price
             df_with_live.iloc[-1, df_with_live.columns.get_loc("close")] = cur_price
             df_calc = TechnicalIndicatorEngine.calculate_all(df_with_live)
 
-            # Query strategy model
-            model = self.models.get(self.strategy_type, self.models["ENSEMBLE"])
-            pred = await model.predict(self.symbol, df_calc, horizon="60m")
+            # Use High-Volume Scalper or asset's best calibrated model
+            model_key = self.strategy_type if self.strategy_type in self.models else best_model
+            model = self.models.get(model_key, self.models["HIGH_VOLUME_SCALPER"])
+            pred = await model.predict(sym, df_calc, horizon="15m")
 
             p_up = pred["probabilities"]["up"]
             p_down = pred["probabilities"]["down"]
             direction = pred["direction"]
 
-            # Evaluate execution trigger
             if direction == "up" and p_up >= self.min_confidence:
-                # BUY Order
-                sl_price = round(cur_price * (1.0 - self.stop_loss_pct / 100.0), 2)
-                tp_price = round(cur_price * (1.0 + self.take_profit_pct / 100.0), 2)
-
+                sl_price = round(cur_price * (1.0 - self.stop_loss_pct / 100.0), precision)
+                tp_price = round(cur_price * (1.0 + self.take_profit_pct / 100.0), precision)
                 order_id = len(ORDERS_LOG) + 1
                 order_dict = {
                     "id": order_id,
-                    "symbol": self.symbol,
+                    "symbol": sym,
                     "side": "BUY",
-                    "quantity": self.quantity,
+                    "quantity": qty,
                     "stop_loss": sl_price,
                     "take_profit": tp_price,
                     "trailing_stop_pct": self.trailing_stop_pct,
@@ -407,7 +402,6 @@ class AutoTradingBot:
                 pos["id"] = len(POSITIONS) + 1
                 pos["portfolio_id"] = PORTFOLIO_STATE["id"]
 
-                # Deduct cash & fees
                 cost = pos["entry_price"] * pos["quantity"]
                 PORTFOLIO_STATE["current_cash"] -= cost
                 PORTFOLIO_STATE["total_fees_paid"] += exec_result["fill"]["fee"]
@@ -416,37 +410,38 @@ class AutoTradingBot:
                 POSITIONS.append(pos)
                 ORDERS_LOG.append(order_dict)
 
-                action_taken = "BOUGHT"
-                detail_msg = (
-                    f"Auto-Bot BOUGHT {self.quantity} {self.symbol} @ ₹{pos['entry_price']:.2f}. "
-                    f"TP: ₹{tp_price} (+{self.take_profit_pct}%), SL: ₹{sl_price} (-{self.stop_loss_pct}%). Conviction: {p_up:.1%}"
-                )
-
-                # Forward to MT5 if live execution is active
+                detail_msg = f"Auto-Bot BOUGHT {qty} {sym} @ {pos['entry_price']:.2f}. TP: {tp_price}, SL: {sl_price} ({p_up:.1%})"
                 if self.execution_mode == "MT5_LIVE" or self.mt5_auto_trade or mt5_bridge.enabled:
                     mt5_sig = mt5_bridge.queue_signal(
-                        symbol=self.symbol,
+                        symbol=sym,
                         side="BUY",
                         lots=mt5_bridge.default_lot_size,
                         price=cur_price,
                         stop_loss=sl_price,
                         take_profit=tp_price,
-                        strategy=self.strategy_type,
-                        comment=f"Auto_{self.strategy_type[:6]}",
+                        strategy=model_key,
+                        comment=f"Auto_{model_key[:6]}",
                     )
-                    detail_msg += f" [MT5 Signal {mt5_sig['signal_id']} Queued]"
+                    detail_msg += f" [MT5: {mt5_sig['signal_id']}]"
+
+                return {
+                    "time": cycle_timestamp,
+                    "action": "BOUGHT",
+                    "detail": detail_msg,
+                    "cur_price": cur_price,
+                    "closed_count": 0,
+                    "symbol": sym,
+                }
 
             elif direction == "down" and p_down >= self.min_confidence:
-                # SHORT / SELL Order
-                sl_price = round(cur_price * (1.0 + self.stop_loss_pct / 100.0), 2)
-                tp_price = round(cur_price * (1.0 - self.take_profit_pct / 100.0), 2)
-
+                sl_price = round(cur_price * (1.0 + self.stop_loss_pct / 100.0), precision)
+                tp_price = round(cur_price * (1.0 - self.take_profit_pct / 100.0), precision)
                 order_id = len(ORDERS_LOG) + 1
                 order_dict = {
                     "id": order_id,
-                    "symbol": self.symbol,
+                    "symbol": sym,
                     "side": "SELL",
-                    "quantity": self.quantity,
+                    "quantity": qty,
                     "stop_loss": sl_price,
                     "take_profit": tp_price,
                     "trailing_stop_pct": self.trailing_stop_pct,
@@ -463,38 +458,156 @@ class AutoTradingBot:
                 POSITIONS.append(pos)
                 ORDERS_LOG.append(order_dict)
 
-                action_taken = "SOLD"
-                detail_msg = (
-                    f"Auto-Bot SOLD {self.quantity} {self.symbol} @ ₹{pos['entry_price']:.2f}. "
-                    f"TP: ₹{tp_price} (-{self.take_profit_pct}%), SL: ₹{sl_price} (+{self.stop_loss_pct}%). Conviction: {p_down:.1%}"
-                )
-
-                # Forward to MT5 if live execution is active
+                detail_msg = f"Auto-Bot SOLD {qty} {sym} @ {pos['entry_price']:.2f}. TP: {tp_price}, SL: {sl_price} ({p_down:.1%})"
                 if self.execution_mode == "MT5_LIVE" or self.mt5_auto_trade or mt5_bridge.enabled:
                     mt5_sig = mt5_bridge.queue_signal(
-                        symbol=self.symbol,
+                        symbol=sym,
                         side="SELL",
                         lots=mt5_bridge.default_lot_size,
                         price=cur_price,
                         stop_loss=sl_price,
                         take_profit=tp_price,
-                        strategy=self.strategy_type,
-                        comment=f"Auto_{self.strategy_type[:6]}",
+                        strategy=model_key,
+                        comment=f"Auto_{model_key[:6]}",
                     )
-                    detail_msg += f" [MT5 Signal {mt5_sig['signal_id']} Queued]"
+                    detail_msg += f" [MT5: {mt5_sig['signal_id']}]"
 
-        log_entry = {
-            "time": cycle_timestamp,
-            "action": action_taken,
-            "detail": detail_msg,
-            "cur_price": cur_price,
-            "closed_count": len(closed_this_cycle),
-        }
-        self.cycle_logs.append(log_entry)
+                return {
+                    "time": cycle_timestamp,
+                    "action": "SOLD",
+                    "detail": detail_msg,
+                    "cur_price": cur_price,
+                    "closed_count": 0,
+                    "symbol": sym,
+                }
+
+        return None
+
+    async def execute_cycle(self) -> Dict[str, Any]:
+        """
+        Continuous background server cycle evaluating all monitored assets simultaneously.
+        Runs autonomously 24/7 on the server even when the browser client is closed.
+        """
+        self.last_run_time = datetime.now(timezone.utc)
+        cycle_timestamp = self.last_run_time.strftime("%H:%M:%S UTC")
+
+        executed_actions = []
+        for asset in self.monitored_assets:
+            sym = asset["symbol"]
+            if not self.enabled_assets.get(sym, True):
+                continue
+            try:
+                res = await self._process_single_asset(asset, cycle_timestamp)
+                if res:
+                    executed_actions.append(res)
+            except Exception as e:
+                logger.error(f"Error evaluating asset {sym}: {e}", exc_info=False)
+
+        active_price = self.live_prices.get(self.symbol, 0.0)
+        open_count = sum(1 for p in POSITIONS if p["status"] == "OPEN")
+
+        if executed_actions:
+            main_log = executed_actions[0]
+        else:
+            main_log = {
+                "time": cycle_timestamp,
+                "action": "MONITORING",
+                "detail": f"Server daemon actively scanning {len(self.monitored_assets)} stocks. Open: {open_count}/{self.max_open_positions}",
+                "cur_price": active_price,
+                "closed_count": 0,
+            }
+
+        self.cycle_logs.append(main_log)
         if len(self.cycle_logs) > 60:
             self.cycle_logs.pop(0)
 
-        return log_entry
+        return main_log
+
+    def get_multi_asset_overview(self, period: str = "DAY") -> Dict[str, Any]:
+        """Returns consolidated multi-stock performance matrix, live prices, and open positions."""
+        assets_data = []
+        total_wins = 0
+        total_losses = 0
+        total_pnl = 0.0
+
+        for asset in self.monitored_assets:
+            sym = asset["symbol"]
+            price = self.live_prices.get(sym, 0.0)
+            if price <= 0:
+                tick = self.get_live_tick(sym)
+                price = tick["price"]
+
+            enabled = self.enabled_assets.get(sym, True)
+            open_pos = next((p for p in POSITIONS if p["status"] == "OPEN" and p["symbol"] == sym), None)
+
+            # Query trade stats from trade ledger
+            analysis = trade_ledger.get_trades_analysis(symbol=sym, period=period)
+            summary = analysis.get("summary", {})
+
+            w_count = summary.get("win_count", 0)
+            l_count = summary.get("loss_count", 0)
+            t_trades = summary.get("total_trades", 0)
+            w_pct = summary.get("win_rate_pct", 0.0)
+            pnl = summary.get("net_realized_pnl", 0.0)
+
+            total_wins += w_count
+            total_losses += l_count
+            total_pnl += pnl
+
+            assets_data.append({
+                "symbol": sym,
+                "name": asset["name"],
+                "category": asset["category"],
+                "currency": asset["currency"],
+                "enabled": enabled,
+                "current_price": price,
+                "best_model": asset["best_model"],
+                "active_position": {
+                    "id": open_pos["id"],
+                    "side": open_pos["side"],
+                    "quantity": open_pos["quantity"],
+                    "entry_price": open_pos["entry_price"],
+                    "current_price": open_pos.get("current_price", price),
+                    "unrealized_pnl": open_pos.get("unrealized_pnl", 0.0),
+                    "stop_loss": open_pos.get("stop_loss"),
+                    "take_profit": open_pos.get("take_profit"),
+                } if open_pos else None,
+                "total_trades": t_trades,
+                "win_count": w_count,
+                "loss_count": l_count,
+                "win_rate_pct": w_pct,
+                "net_pnl": pnl,
+                "profit_factor": summary.get("profit_factor", 1.0),
+            })
+
+        overall_trades = total_wins + total_losses
+        overall_win_rate = round((total_wins / overall_trades * 100.0), 1) if overall_trades > 0 else 0.0
+
+        return {
+            "is_bot_active": self.is_active,
+            "execution_mode": self.execution_mode,
+            "mt5_auto_trade": self.mt5_auto_trade,
+            "period": period,
+            "overall_summary": {
+                "monitored_count": len(self.monitored_assets),
+                "enabled_count": sum(1 for a in assets_data if a["enabled"]),
+                "total_trades": overall_trades,
+                "win_count": total_wins,
+                "loss_count": total_losses,
+                "win_rate_pct": overall_win_rate,
+                "net_pnl": round(total_pnl, 2),
+            },
+            "assets": assets_data,
+            "recent_logs": self.cycle_logs[-12:],
+        }
+
+    def toggle_asset(self, symbol: str, enabled: bool) -> bool:
+        """Toggles automated trading for a specific stock."""
+        for a in self.monitored_assets:
+            if a["symbol"] == symbol:
+                self.enabled_assets[symbol] = enabled
+                return True
+        return False
 
 
 # Global bot instance

@@ -5,7 +5,6 @@ import {
   Calendar,
   Zap,
   Target,
-  ShieldAlert,
   ShieldCheck,
   Percent,
   DollarSign,
@@ -17,9 +16,8 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownRight,
-  ChevronRight,
 } from "lucide-react";
-import { TradeHistoryResponse, TradeRecord } from "../types";
+import { TradeHistoryResponse } from "../types";
 import { fetchTradeHistory, executePaperOrder } from "../api";
 
 interface TradeAnalyticsLedgerProps {
@@ -59,7 +57,7 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
 
   useEffect(() => {
     loadHistory();
-    const interval = setInterval(loadHistory, 10000);
+    const interval = setInterval(loadHistory, 8000);
     return () => clearInterval(interval);
   }, [period, filterSymbol, startDate, endDate]);
 
@@ -67,15 +65,15 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
     setScalpExecuting(true);
     setScalpMessage(null);
     try {
-      // Scalping uses large volume (e.g., 25 units) with tight stop and fast TP target
+      const targetSym = filterSymbol !== "ALL" ? filterSymbol : currentSymbol;
       const res = await executePaperOrder({
-        symbol: currentSymbol,
+        symbol: targetSym,
         side,
-        quantity: 25,
+        quantity: targetSym.includes("GOLD") ? 2 : 25,
         order_type: "MARKET",
       });
       const execPrice = res.price || res.executed_price || 0;
-      setScalpMessage(`⚡ ${side} Micro-Scalp of 25 lots executed on ${currentSymbol} at ₹${execPrice.toFixed(2)}!`);
+      setScalpMessage(`⚡ ${side} Micro-Scalp executed on ${targetSym} @ ₹${execPrice.toFixed(2)}!`);
       if (onTradeExecuted) onTradeExecuted();
       setTimeout(loadHistory, 1200);
     } catch (err: any) {
@@ -117,41 +115,58 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
   };
 
   return (
-    <div className="bg-[#12161f] border border-gray-800 rounded-xl p-5 shadow-2xl space-y-6">
+    <div className="trade-ledger-box">
       {/* Header & Period Filters */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-800/80">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-            <Award className="w-5 h-5" />
+      <div className="trade-ledger-header">
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div
+            style={{
+              padding: "10px",
+              borderRadius: "10px",
+              background: "rgba(16, 185, 129, 0.12)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              color: "#34d399",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Award size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-white tracking-wide">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#fff", letterSpacing: "0.3px" }}>
                 Trade Ledger & Period Profitability
               </h2>
-              <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  background: "rgba(16, 185, 129, 0.15)",
+                  color: "#34d399",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                  borderRadius: "20px",
+                  padding: "2px 8px",
+                }}
+              >
                 Persistent Storage
               </span>
             </div>
-            <p className="text-xs text-gray-400">
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
               Filtered win rate %, net profit factor, and second-level high-volume scalper analytics
             </p>
           </div>
         </div>
 
         {/* Filter Controls */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           {/* Period Selector Buttons */}
-          <div className="flex items-center bg-[#1a2130] p-1 rounded-lg border border-gray-700/60 text-xs">
+          <div className="period-pill-group">
             {(["DAY", "MONTH", "YEAR", "CUSTOM", "ALL"] as const).map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                  period === p
-                    ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20 font-bold"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
-                }`}
+                className={`period-pill-btn ${period === p ? "active" : ""}`}
               >
                 {p === "DAY"
                   ? "Today"
@@ -170,114 +185,184 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
           <select
             value={filterSymbol}
             onChange={(e) => setFilterSymbol(e.target.value)}
-            className="bg-[#1a2130] border border-gray-700/60 text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+            className="symbol-select-control"
           >
-            <option value="ALL">All Symbols</option>
+            <option value="ALL">All Monitored Assets</option>
             <option value="NIFTY 50">NIFTY 50</option>
-            <option value="BANKNIFTY">BANKNIFTY</option>
-            <option value="GOLD">GOLD</option>
+            <option value="BANKNIFTY">BANK NIFTY</option>
+            <option value="GOLD">GOLD (XAUUSD)</option>
+            <option value="SILVER">SILVER (XAGUSD)</option>
+            <option value="USD/INR">USD/INR</option>
             <option value="RELIANCE">RELIANCE</option>
             <option value="TCS">TCS</option>
+            <option value="CRUDE OIL">CRUDE OIL</option>
+            <option value="EUR/USD">EUR/USD</option>
+            <option value="GBP/USD">GBP/USD</option>
           </select>
 
           {/* Refresh Button */}
           <button
             onClick={loadHistory}
             disabled={loading}
-            className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+            style={{
+              padding: "7px 10px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "8px",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+            }}
             title="Reload trade data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+            <RefreshCw size={14} className={loading ? "animate-spin text-emerald-400" : ""} />
           </button>
         </div>
       </div>
 
-      {/* Custom Date Range Picker (shown when period === 'CUSTOM') */}
+      {/* Custom Date Range Picker */}
       {period === "CUSTOM" && (
-        <div className="flex flex-wrap items-center gap-3 p-3 bg-[#161d2b] border border-emerald-500/20 rounded-lg text-xs">
-          <Calendar className="w-4 h-4 text-emerald-400" />
-          <span className="text-gray-300 font-medium">Select Custom Date Range:</span>
-          <div className="flex items-center gap-2">
-            <label className="text-gray-400">From:</label>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            background: "rgba(16, 185, 129, 0.08)",
+            border: "1px solid rgba(16, 185, 129, 0.2)",
+            borderRadius: "8px",
+            padding: "10px 14px",
+            fontSize: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Calendar size={15} color="#34d399" />
+          <span style={{ color: "var(--text-main)", fontWeight: 600 }}>Select Custom Date Range:</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <label style={{ color: "var(--text-dim)" }}>From:</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="bg-[#10141d] border border-gray-700 text-gray-200 rounded px-2 py-1 focus:outline-none focus:border-emerald-500"
+              style={{
+                background: "#0b0f19",
+                border: "1px solid var(--border-subtle)",
+                color: "#fff",
+                borderRadius: "4px",
+                padding: "3px 8px",
+                fontSize: "12px",
+              }}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-gray-400">To:</label>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <label style={{ color: "var(--text-dim)" }}>To:</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="bg-[#10141d] border border-gray-700 text-gray-200 rounded px-2 py-1 focus:outline-none focus:border-emerald-500"
+              style={{
+                background: "#0b0f19",
+                border: "1px solid var(--border-subtle)",
+                color: "#fff",
+                borderRadius: "4px",
+                padding: "3px 8px",
+                fontSize: "12px",
+              }}
             />
           </div>
           <button
             onClick={loadHistory}
-            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium transition-colors"
+            style={{
+              background: "#10b981",
+              color: "#000",
+              fontWeight: 700,
+              border: "none",
+              borderRadius: "4px",
+              padding: "4px 12px",
+              cursor: "pointer",
+            }}
           >
-            Apply Filter
+            Apply
           </button>
         </div>
       )}
 
       {/* KPI Performance Cards */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="kpi-cards-grid">
           {/* Win Rate Card */}
-          <div className="bg-[#171d2b] border border-gray-800 rounded-xl p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="kpi-metric-card">
+            <div className="kpi-title">
               <span>Win Rate %</span>
-              <Percent className="w-4 h-4 text-emerald-400" />
+              <Percent size={14} color="#10b981" />
             </div>
-            <div className="my-2">
-              <div className="flex items-baseline gap-2">
+            <div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
                 <span
-                  className={`text-2xl font-black ${
-                    summary.win_rate_pct >= 60
-                      ? "text-emerald-400"
-                      : summary.win_rate_pct >= 45
-                      ? "text-amber-400"
-                      : "text-rose-400"
-                  }`}
+                  className="kpi-value"
+                  style={{
+                    color:
+                      summary.win_rate_pct >= 60
+                        ? "#34d399"
+                        : summary.win_rate_pct >= 45
+                        ? "#fbbf24"
+                        : "#f87171",
+                  }}
                 >
                   {summary.win_rate_pct.toFixed(1)}%
                 </span>
-                <span className="text-xs text-gray-400">
+                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
                   ({summary.win_count}W / {summary.loss_count}L)
                 </span>
               </div>
-              {/* Visual win rate progress bar */}
-              <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden flex">
+              {/* Visual progress bar */}
+              <div
+                style={{
+                  width: "100%",
+                  height: "5px",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  borderRadius: "4px",
+                  marginTop: "8px",
+                  overflow: "hidden",
+                  display: "flex",
+                }}
+              >
                 <div
-                  style={{ width: `${summary.win_rate_pct}%` }}
-                  className="bg-emerald-500 h-full rounded-l-full transition-all duration-500"
+                  style={{
+                    width: `${summary.win_rate_pct}%`,
+                    background: "#10b981",
+                    height: "100%",
+                    transition: "width 0.4s ease",
+                  }}
                 />
                 <div
-                  style={{ width: `${100 - summary.win_rate_pct}%` }}
-                  className="bg-rose-500 h-full rounded-r-full transition-all duration-500"
+                  style={{
+                    width: `${100 - summary.win_rate_pct}%`,
+                    background: "#ef4444",
+                    height: "100%",
+                    transition: "width 0.4s ease",
+                  }}
                 />
               </div>
             </div>
-            <span className="text-[11px] text-gray-500">
-              Total {summary.total_trades} trade{summary.total_trades !== 1 ? "s" : ""} in {period}
-            </span>
+            <div className="kpi-footer">
+              <span>Total {summary.total_trades} trade{summary.total_trades !== 1 ? "s" : ""}</span>
+              <span style={{ color: "var(--accent-primary)" }}>{period} Filter</span>
+            </div>
           </div>
 
           {/* Net Realized P&L */}
-          <div className="bg-[#171d2b] border border-gray-800 rounded-xl p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="kpi-metric-card">
+            <div className="kpi-title">
               <span>Net Realized P&L</span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
+              <DollarSign size={14} color="#10b981" />
             </div>
-            <div className="my-2">
+            <div>
               <span
-                className={`text-2xl font-black ${
-                  summary.net_realized_pnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
+                className="kpi-value"
+                style={{
+                  color: summary.net_realized_pnl >= 0 ? "#34d399" : "#f87171",
+                }}
               >
                 {summary.net_realized_pnl >= 0 ? "+" : ""}₹
                 {summary.net_realized_pnl.toLocaleString("en-IN", {
@@ -286,48 +371,51 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                 })}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-gray-400">
-              <span className="text-emerald-400/90 font-medium">+₹{summary.gross_profit.toFixed(0)}</span>
-              <span className="text-rose-400/90 font-medium">-₹{summary.gross_loss.toFixed(0)}</span>
+            <div className="kpi-footer">
+              <span style={{ color: "#34d399" }}>+₹{summary.gross_profit.toFixed(0)}</span>
+              <span style={{ color: "#f87171" }}>-₹{summary.gross_loss.toFixed(0)}</span>
             </div>
           </div>
 
           {/* Profit Factor */}
-          <div className="bg-[#171d2b] border border-gray-800 rounded-xl p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="kpi-metric-card">
+            <div className="kpi-title">
               <span>Profit Factor</span>
-              <BarChart3 className="w-4 h-4 text-cyan-400" />
+              <BarChart3 size={14} color="#38bdf8" />
             </div>
-            <div className="my-2">
+            <div>
               <span
-                className={`text-2xl font-black ${
-                  summary.profit_factor >= 2.0
-                    ? "text-cyan-400"
-                    : summary.profit_factor >= 1.0
-                    ? "text-amber-400"
-                    : "text-rose-400"
-                }`}
+                className="kpi-value"
+                style={{
+                  color:
+                    summary.profit_factor >= 2.0
+                      ? "#38bdf8"
+                      : summary.profit_factor >= 1.0
+                      ? "#fbbf24"
+                      : "#f87171",
+                }}
               >
                 {summary.profit_factor >= 99 ? "∞" : `${summary.profit_factor.toFixed(2)}x`}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-gray-500">
-              <span>Avg Win: ₹{summary.avg_win.toFixed(0)}</span>
-              <span>Avg Loss: ₹{summary.avg_loss.toFixed(0)}</span>
+            <div className="kpi-footer">
+              <span>Avg W: ₹{summary.avg_win.toFixed(0)}</span>
+              <span>Avg L: ₹{summary.avg_loss.toFixed(0)}</span>
             </div>
           </div>
 
           {/* Average Trade P&L */}
-          <div className="bg-[#171d2b] border border-gray-800 rounded-xl p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="kpi-metric-card">
+            <div className="kpi-title">
               <span>Avg Trade Return</span>
-              <Target className="w-4 h-4 text-violet-400" />
+              <Target size={14} color="#a78bfa" />
             </div>
-            <div className="my-2">
+            <div>
               <span
-                className={`text-2xl font-black ${
-                  summary.avg_trade_pnl >= 0 ? "text-violet-400" : "text-rose-400"
-                }`}
+                className="kpi-value"
+                style={{
+                  color: summary.avg_trade_pnl >= 0 ? "#a78bfa" : "#f87171",
+                }}
               >
                 {summary.avg_trade_pnl >= 0 ? "+" : ""}₹
                 {summary.avg_trade_pnl.toLocaleString("en-IN", {
@@ -336,59 +424,86 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                 })}
               </span>
             </div>
-            <span className="text-[11px] text-gray-500">
-              Risk:Reward Asymmetry: 2.5 : 1
-            </span>
+            <div className="kpi-footer">
+              <span>Risk:Reward 2.5 : 1</span>
+              <span style={{ color: "#34d399" }}>Target Scalp</span>
+            </div>
           </div>
         </div>
       )}
 
       {/* High-Volume Micro Scalper Action Banner */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-emerald-950/40 via-[#16222f] to-[#141b29] border border-emerald-500/30 rounded-xl p-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1 max-w-2xl">
-            <div className="flex items-center gap-2">
-              <div className="p-1 rounded bg-emerald-500/20 text-emerald-400">
-                <Zap className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                ⚡ High-Volume Micro Scalper (Second-Trade Strategy)
-              </h3>
-              <span className="px-2 py-0.5 text-[9px] font-extrabold bg-emerald-500 text-black rounded">
-                CHOP-PROOF
-              </span>
+      <div className="scalper-banner">
+        <div style={{ maxWidth: "680px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+            <div
+              style={{
+                background: "rgba(16, 185, 129, 0.2)",
+                padding: "4px",
+                borderRadius: "4px",
+                color: "#34d399",
+                display: "flex",
+              }}
+            >
+              <Zap size={15} />
             </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              Eliminates false breakouts and prediction losses. Only triggers when bar volume spikes{" "}
-              <strong className="text-emerald-400">≥ 1.35x average</strong> with price breaking institutional VWAP.
-              Takes micro-targets in <strong className="text-cyan-400">15s – 90s</strong> on heavy volume (25 lots)
-              with strict trailing stop to secure profit before market can reverse.
-            </p>
+            <h3 style={{ fontSize: "13px", fontWeight: 800, color: "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              ⚡ High-Volume Micro Scalper (Second-Trade Strategy)
+            </h3>
+            <span
+              style={{
+                background: "#10b981",
+                color: "#000",
+                fontSize: "9px",
+                fontWeight: 900,
+                padding: "2px 6px",
+                borderRadius: "4px",
+              }}
+            >
+              CHOP-PROOF
+            </span>
           </div>
+          <p style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: "1.6" }}>
+            Eliminates false breakouts and prediction losses. Only triggers when bar volume spikes{" "}
+            <strong style={{ color: "#34d399" }}>≥ 1.35x average</strong> with price breaking institutional VWAP.
+            Takes micro-targets in <strong style={{ color: "#38bdf8" }}>15s – 90s</strong> on heavy volume
+            with strict trailing stop to secure profit before market can reverse.
+          </p>
+        </div>
 
-          {/* Scalp Trigger Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => handleExecuteScalp("BUY")}
-              disabled={scalpExecuting}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>SCALP BUY (25 Lots)</span>
-            </button>
-            <button
-              onClick={() => handleExecuteScalp("SELL")}
-              disabled={scalpExecuting}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-lg shadow-rose-600/30 transition-all active:scale-95"
-            >
-              <TrendingDown className="w-3.5 h-3.5" />
-              <span>SCALP SHORT (25 Lots)</span>
-            </button>
-          </div>
+        {/* Scalp Trigger Buttons */}
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            onClick={() => handleExecuteScalp("BUY")}
+            disabled={scalpExecuting}
+            className="btn-scalp-buy"
+          >
+            <TrendingUp size={14} />
+            <span>SCALP BUY ({filterSymbol !== "ALL" ? filterSymbol : currentSymbol})</span>
+          </button>
+          <button
+            onClick={() => handleExecuteScalp("SELL")}
+            disabled={scalpExecuting}
+            className="btn-scalp-sell"
+          >
+            <TrendingDown size={14} />
+            <span>SCALP SHORT ({filterSymbol !== "ALL" ? filterSymbol : currentSymbol})</span>
+          </button>
         </div>
 
         {scalpMessage && (
-          <div className="mt-3 p-2 text-xs font-semibold rounded bg-emerald-900/60 border border-emerald-500/40 text-emerald-200 animate-fadeIn">
+          <div
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              fontSize: "12px",
+              fontWeight: 600,
+              borderRadius: "6px",
+              background: "rgba(6, 78, 59, 0.8)",
+              border: "1px solid rgba(16, 185, 129, 0.4)",
+              color: "#6ee7b7",
+            }}
+          >
             {scalpMessage}
           </div>
         )}
@@ -396,39 +511,59 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
 
       {/* Strategy Breakdown Chips */}
       {strategies.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Model & Strategy Performance Breakdown ({period})</span>
+        <div>
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "var(--text-muted)",
+              marginBottom: "8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Layers size={13} color="#38bdf8" />
+            <span>Model Strategy Breakdown ({period})</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
             {strategies.map((strat) => (
               <div
                 key={strat.name}
-                className="bg-[#151b27] border border-gray-800 rounded-lg p-3 flex items-center justify-between"
+                style={{
+                  background: "rgba(15, 21, 33, 0.6)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
               >
                 <div>
-                  <div className="text-xs font-bold text-white tracking-wide">
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
                     {strat.name === "HIGH_VOLUME_SCALPER"
-                      ? "⚡ High-Volume Scalper"
+                      ? "⚡ Micro Scalper"
                       : strat.name === "ORDER_FLOW_IMBALANCE"
-                      ? "🌊 Order Flow Imbalance"
+                      ? "🌊 Order Flow"
                       : strat.name}
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">
+                  <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
                     {strat.trades} trades • {strat.wins} wins
                   </div>
                 </div>
-                <div className="text-right">
+                <div style={{ textAlign: "right" }}>
                   <div
-                    className={`text-xs font-extrabold ${
-                      strat.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                    }`}
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      color: strat.pnl >= 0 ? "#34d399" : "#f87171",
+                    }}
                   >
                     {strat.pnl >= 0 ? "+" : ""}₹{strat.pnl.toLocaleString("en-IN")}
                   </div>
-                  <div className="text-[10px] text-cyan-400 font-semibold">
-                    {strat.win_rate.toFixed(0)}% Win Rate
+                  <div style={{ fontSize: "10px", color: "#38bdf8", fontWeight: 700 }}>
+                    {strat.win_rate.toFixed(0)}% Win
                   </div>
                 </div>
               </div>
@@ -438,74 +573,89 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
       )}
 
       {/* Trade History Table */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
-            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "var(--text-muted)" }}>
+            <Clock size={13} color="#10b981" />
             <span>Executed Trade Ledger ({trades.length} Records)</span>
           </div>
-          <span className="text-[11px] text-gray-500">
-            Timestamps displayed in Indian Standard Time (IST)
+          <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+            Timestamps formatted in Indian Standard Time (IST)
           </span>
         </div>
 
         {trades.length === 0 ? (
-          <div className="text-center py-10 bg-[#161c28] border border-dashed border-gray-800 rounded-xl">
-            <Filter className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-            <p className="text-xs text-gray-400 font-medium">
+          <div
+            style={{
+              textAlign: "center",
+              padding: "40px 20px",
+              background: "rgba(15, 21, 33, 0.4)",
+              border: "1px dashed var(--border-subtle)",
+              borderRadius: "10px",
+            }}
+          >
+            <Filter size={24} color="var(--text-dim)" style={{ margin: "0 auto 8px auto" }} />
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 600 }}>
               No completed trades found for the selected {period} filter.
             </p>
-            <p className="text-[11px] text-gray-500 mt-1">
-              Execute a high-volume scalp or enable auto-bot to record trades in this period.
+            <p style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
+              Execute a high-volume scalp or start auto-bot to record trades in this period.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-800">
-            <table className="w-full text-left border-collapse text-xs">
+          <div className="ledger-table-wrap">
+            <table className="ledger-data-table">
               <thead>
-                <tr className="bg-[#171d2b] border-b border-gray-800 text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Time (IST)</th>
-                  <th className="py-2.5 px-3">Symbol</th>
-                  <th className="py-2.5 px-3">Side</th>
-                  <th className="py-2.5 px-3">Strategy</th>
-                  <th className="py-2.5 px-3 text-right">Volume</th>
-                  <th className="py-2.5 px-3 text-right">Entry</th>
-                  <th className="py-2.5 px-3 text-right">Exit</th>
-                  <th className="py-2.5 px-3 text-center">Duration</th>
-                  <th className="py-2.5 px-3 text-right">Realized P&L</th>
-                  <th className="py-2.5 px-3 text-center">Outcome</th>
+                <tr>
+                  <th>Time (IST)</th>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                  <th>Strategy</th>
+                  <th style={{ textAlign: "right" }}>Volume</th>
+                  <th style={{ textAlign: "right" }}>Entry</th>
+                  <th style={{ textAlign: "right" }}>Exit</th>
+                  <th style={{ textAlign: "center" }}>Duration</th>
+                  <th style={{ textAlign: "right" }}>Realized P&L</th>
+                  <th style={{ textAlign: "center" }}>Outcome</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60 font-mono">
+              <tbody>
                 {trades.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="hover:bg-gray-850/40 transition-colors bg-[#131824]"
-                  >
-                    <td className="py-2.5 px-3 text-gray-300 text-[11px]">
+                  <tr key={t.id}>
+                    <td style={{ color: "var(--text-muted)", fontSize: "11px" }}>
                       {formatIST(t.closed_at)}
                     </td>
-                    <td className="py-2.5 px-3 font-sans font-bold text-white">
+                    <td style={{ fontWeight: 700, color: "#fff", fontFamily: "var(--font-sans)" }}>
                       {t.symbol}
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td>
                       <span
-                        className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
-                          t.side === "BUY"
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        }`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          background: t.side === "BUY" ? "rgba(16, 185, 129, 0.15)" : "rgba(244, 63, 94, 0.15)",
+                          color: t.side === "BUY" ? "#34d399" : "#fb7185",
+                          border: `1px solid ${t.side === "BUY" ? "rgba(16, 185, 129, 0.3)" : "rgba(244, 63, 94, 0.3)"}`,
+                        }}
                       >
-                        {t.side === "BUY" ? (
-                          <ArrowUpRight className="w-2.5 h-2.5" />
-                        ) : (
-                          <ArrowDownRight className="w-2.5 h-2.5" />
-                        )}
+                        {t.side === "BUY" ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
                         {t.side}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-[11px] font-sans text-gray-400">
-                      <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700/60">
+                    <td style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "var(--font-sans)" }}>
+                      <span
+                        style={{
+                          background: "rgba(255, 255, 255, 0.04)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
                         {t.strategy === "HIGH_VOLUME_SCALPER"
                           ? "⚡ Micro Scalper"
                           : t.strategy === "ORDER_FLOW_IMBALANCE"
@@ -513,36 +663,44 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                           : t.strategy}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-right text-gray-200 font-semibold">
+                    <td style={{ textAlign: "right", color: "var(--text-main)", fontWeight: 700 }}>
                       {t.quantity}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-gray-400">
+                    <td style={{ textAlign: "right", color: "var(--text-muted)" }}>
                       ₹{t.entry_price.toFixed(2)}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-gray-200">
+                    <td style={{ textAlign: "right", color: "var(--text-main)" }}>
                       ₹{t.exit_price.toFixed(2)}
                     </td>
-                    <td className="py-2.5 px-3 text-center text-gray-400 font-sans text-[11px]">
+                    <td style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "11px", fontFamily: "var(--font-sans)" }}>
                       {formatDuration(t.duration_seconds)}
                     </td>
                     <td
-                      className={`py-2.5 px-3 text-right font-bold text-xs ${
-                        t.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                      }`}
+                      style={{
+                        textAlign: "right",
+                        fontWeight: 800,
+                        color: t.realized_pnl >= 0 ? "#34d399" : "#f87171",
+                      }}
                     >
                       {t.realized_pnl >= 0 ? "+" : ""}₹{t.realized_pnl.toFixed(2)}
-                      <span className="text-[10px] ml-1 opacity-80 font-normal">
+                      <span style={{ fontSize: "10px", marginLeft: "4px", opacity: 0.8, fontWeight: 500 }}>
                         ({t.realized_return_pct >= 0 ? "+" : ""}
                         {t.realized_return_pct.toFixed(2)}%)
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-center">
+                    <td style={{ textAlign: "center" }}>
                       <span
-                        className={`inline-block px-2 py-0.5 text-[9px] font-extrabold uppercase rounded ${
-                          t.is_win
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        }`}
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 6px",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          borderRadius: "4px",
+                          textTransform: "uppercase",
+                          background: t.is_win ? "rgba(16, 185, 129, 0.15)" : "rgba(244, 63, 94, 0.15)",
+                          color: t.is_win ? "#34d399" : "#fb7185",
+                          border: `1px solid ${t.is_win ? "rgba(16, 185, 129, 0.3)" : "rgba(244, 63, 94, 0.3)"}`,
+                        }}
                       >
                         {t.close_reason || (t.is_win ? "WIN" : "LOSS")}
                       </span>

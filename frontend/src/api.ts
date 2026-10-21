@@ -270,3 +270,58 @@ export async function fetchMT5EACode(): Promise<{ filename: string; code: string
   if (!res.ok) throw new Error("Failed to fetch MT5 EA code");
   return res.json();
 }
+
+export interface MultiAssetData {
+  symbol: string;
+  display_name: string;
+  category: string;
+  model: string;
+  enabled: boolean;
+  default_qty: number;
+  current_price: number;
+  has_active_position: boolean;
+  active_side: "BUY" | "SELL" | null;
+  unrealized_pnl: number;
+  win_rate_pct: number;
+  win_trades: number;
+  loss_trades: number;
+  total_trades: number;
+  net_realized_pnl: number;
+  profit_factor: number;
+  best_model_accuracy: number;
+  last_signal: string;
+  last_confidence: number;
+}
+
+export interface MultiAssetOverviewResponse {
+  status: string;
+  is_running: boolean;
+  last_run_timestamp: string;
+  engine_mode: string;
+  total_monitored: number;
+  active_trading_count: number;
+  selected_period: string;
+  portfolio_summary: {
+    total_closed_trades: number;
+    total_win_rate_pct: number;
+    total_realized_pnl: number;
+    total_active_positions: number;
+  };
+  assets: MultiAssetData[];
+}
+
+export async function fetchMultiAssetOverview(period = "DAY"): Promise<MultiAssetOverviewResponse> {
+  const res = await fetch(`${API_BASE}/bot/multi-asset-overview?period=${encodeURIComponent(period)}`);
+  if (!res.ok) throw new Error("Failed to fetch multi-asset overview");
+  return res.json();
+}
+
+export async function toggleAssetTrading(symbol: string, enabled: boolean): Promise<any> {
+  const res = await fetch(`${API_BASE}/bot/toggle-symbol`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol, enabled }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle asset trading");
+  return res.json();
+}

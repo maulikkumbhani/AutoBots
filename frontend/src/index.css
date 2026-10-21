@@ -777,4 +777,353 @@ body {
   border: 1px solid rgba(99, 102, 241, 0.4);
 }
 
+/* =========================================================
+   TRADE LEDGER & PERIOD PROFITABILITY STYLING
+   ========================================================= */
+.trade-ledger-box {
+  background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.trade-ledger-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.period-pill-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(10, 14, 22, 0.85);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 4px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.period-pill-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.period-pill-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.period-pill-btn.active {
+  background: #10b981;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+}
+
+.symbol-select-control {
+  background: rgba(15, 21, 33, 0.9);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.symbol-select-control:focus {
+  border-color: #10b981;
+}
+
+.kpi-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.kpi-metric-card {
+  background: rgba(15, 21, 33, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.kpi-metric-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.kpi-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.kpi-footer {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.scalper-banner {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.4) 0%, rgba(15, 23, 42, 0.7) 50%, rgba(17, 24, 39, 0.8) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.btn-scalp-buy {
+  background: #059669;
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-scalp-buy:hover {
+  background: #10b981;
+  transform: translateY(-1px);
+}
+
+.btn-scalp-sell {
+  background: #e11d48;
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-scalp-sell:hover {
+  background: #f43f5e;
+  transform: translateY(-1px);
+}
+
+.ledger-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(10, 14, 22, 0.4);
+}
+
+.ledger-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ledger-data-table th {
+  background: rgba(15, 21, 33, 0.95);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.ledger-data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+}
+
+.ledger-data-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* =========================================================
+   MULTI-ASSET DASHBOARD STYLES
+   ========================================================= */
+.multi-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.asset-command-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.asset-command-card:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.asset-command-card.enabled {
+  border-left: 3px solid #10b981;
+}
+
+.asset-command-card.paused {
+  border-left: 3px solid #64748b;
+  opacity: 0.8;
+}
+
+/* =========================================================
+   MOBILE & TABLET RESPONSIVENESS OVERRIDES
+   ========================================================= */
+@media (max-width: 1024px) {
+  .main-content {
+    flex-direction: column !important;
+    padding: 12px !important;
+    gap: 14px !important;
+  }
+  .left-panel, .right-panel {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .kpi-cards-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-navbar {
+    padding: 10px 14px !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+  .navbar-actions {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+  .brand-badge {
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+  }
+  .brand-section h1 {
+    font-size: 13px !important;
+  }
+  .brand-section p {
+    display: none !important;
+  }
+  .ticker-strip {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    white-space: nowrap !important;
+    padding: 6px 10px !important;
+  }
+  .tabs-nav {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none !important;
+    gap: 6px !important;
+    padding-bottom: 6px !important;
+  }
+  .tab-btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+  }
+  .kpi-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .trade-ledger-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .period-pill-group {
+    width: 100% !important;
+  }
+  .scalper-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .scalper-banner > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+  .scalper-banner > div:last-child button {
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+  .multi-asset-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .instrument-picker-dropdown {
+    width: 90vw !important;
+    max-width: 360px !important;
+  }
+}
+
 

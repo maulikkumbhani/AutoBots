@@ -190,8 +190,11 @@ class TradeLedgerStore:
 
         filtered = []
         for t in all_trades:
-            if symbol and t.get("symbol") != symbol:
-                continue
+            if symbol and symbol != "ALL":
+                t_sym = str(t.get("symbol", "")).replace(" ", "").upper()
+                s_sym = str(symbol).replace(" ", "").upper()
+                if t_sym != s_sym:
+                    continue
 
             closed_str = t.get("closed_at") or t.get("opened_at")
             if not closed_str:
