@@ -423,3 +423,79 @@ export async function fetchMasterAuditJournal(params?: {
 export function getMasterAuditCSVExportUrl(): string {
   return `${API_BASE}/analytics/export-master-audit-csv`;
 }
+
+export interface MultiStrategyItem {
+  strategy_id: string;
+  strategy_name: string;
+  tagline: string;
+  description: string;
+  magic_number: number;
+  tp_pct: number;
+  sl_pct: number;
+  win_rate_pct: number;
+  total_trades: number;
+  win_count: number;
+  loss_count: number;
+  net_realized_pnl: number;
+  last_signal: string;
+  last_confidence: number;
+  status: string;
+  is_champion?: boolean;
+  active_position: {
+    side: "BUY" | "SELL";
+    entry_price: number;
+    current_price: number;
+    quantity: number;
+    stop_loss: number;
+    take_profit: number;
+    unrealized_pnl: number;
+    duration_seconds: number;
+  } | null;
+}
+
+export interface MultiStrategyMatrixResponse {
+  symbol: string;
+  current_price: number;
+  monitored_symbols: string[];
+  strategies: MultiStrategyItem[];
+  champion_strategy: string;
+  total_strategies_tested: number;
+}
+
+export async function fetchMultiStrategyMatrix(symbol = "NIFTY 50"): Promise<MultiStrategyMatrixResponse> {
+  const res = await fetch(`${API_BASE}/bot/multi-strategy-matrix?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch multi-strategy matrix");
+  return res.json();
+}
+
+export async function fetchMT4Status(): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt4/bridge/status`);
+  if (!res.ok) throw new Error("Failed to fetch MT4 status");
+  return res.json();
+}
+
+export async function updateMT4Config(config: {
+  enabled?: boolean;
+  server?: string;
+  account_id?: string;
+  default_lot_size?: number;
+  broker_name?: string;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt4/bridge/config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error("Failed to update MT4 config");
+  return res.json();
+}
+
+export async function fetchMT4EACode(): Promise<{ filename: string; instructions: string; code: string }> {
+  const res = await fetch(`${API_BASE}/mt4/bridge/ea-code`);
+  if (!res.ok) throw new Error("Failed to fetch MT4 EA code");
+  return res.json();
+}
+
+export function getMT4EADownloadUrl(): string {
+  return `${API_BASE}/mt4/bridge/download-ea`;
+}

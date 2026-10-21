@@ -25,6 +25,7 @@ import {
   configureBot,
   fetchPredictionRecords,
   executePaperOrder,
+  getMasterAuditCSVExportUrl,
 } from "./api";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { AutoBotPanel } from "./components/AutoBotPanel";
@@ -36,6 +37,7 @@ import { MultiModelConsensusPanel } from "./components/MultiModelConsensusPanel"
 import { TradeAnalyticsLedger } from "./components/TradeAnalyticsLedger";
 import { MultiAssetDashboard } from "./components/MultiAssetDashboard";
 import { MasterTradeAuditSheet } from "./components/MasterTradeAuditSheet";
+import { MultiStrategyLab } from "./components/MultiStrategyLab";
 import {
   TrendingUp,
   RefreshCw,
@@ -60,12 +62,13 @@ import {
   Eye,
   Award,
   FileSpreadsheet,
+  Download,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"multibot" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
+  const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -635,6 +638,26 @@ export const App: React.FC = () => {
             <span>{autoSync ? "LIVE AUTO-SYNC: ON" : "AUTO-SYNC: PAUSED"}</span>
           </button>
 
+          {/* Master CSV Export Direct Download Button */}
+          <a
+            href={getMasterAuditCSVExportUrl()}
+            download="master_trade_audit_export.csv"
+            className="btn btn-outline"
+            style={{
+              borderColor: "rgba(16, 185, 129, 0.4)",
+              color: "var(--bullish-green)",
+              background: "rgba(16, 185, 129, 0.08)",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            title="Download Master Trade Audit Permanent CSV"
+          >
+            <Download size={14} />
+            <span style={{ fontWeight: 600 }}>Master CSV</span>
+          </a>
+
           {/* Quick Instrument Picker Trigger Button */}
           <button
             className="btn btn-primary"
@@ -1075,6 +1098,14 @@ export const App: React.FC = () => {
               </div>
             </button>
             <button
+              className={`tab-btn ${activeTab === "strategy_lab" ? "active" : ""}`}
+              onClick={() => setActiveTab("strategy_lab")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Zap size={14} color="#f59e0b" /> ⚡ 5-Strategy Lab & MT4/MT5
+              </div>
+            </button>
+            <button
               className={`tab-btn ${activeTab === "master_sheet" ? "active" : ""}`}
               onClick={() => setActiveTab("master_sheet")}
             >
@@ -1140,6 +1171,15 @@ export const App: React.FC = () => {
                 onSelectSymbol={(sym) => {
                   setSelectedSymbol(sym);
                   setActiveTab("portfolio");
+                }}
+              />
+            )}
+
+            {activeTab === "strategy_lab" && (
+              <MultiStrategyLab
+                initialSymbol={selectedSymbol}
+                onSelectSymbol={(sym) => {
+                  setSelectedSymbol(sym);
                 }}
               />
             )}

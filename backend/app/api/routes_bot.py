@@ -14,8 +14,9 @@ class BotConfigUpdate(BaseModel):
     stop_loss_pct: Optional[float] = None
     trailing_stop_pct: Optional[float] = None
     min_confidence: Optional[float] = None
-    execution_mode: Optional[str] = None  # "PAPER" or "MT5_LIVE"
+    execution_mode: Optional[str] = None  # "PAPER", "MT5_LIVE", or "MT4_LIVE"
     mt5_auto_trade: Optional[bool] = None
+    mt4_auto_trade: Optional[bool] = None
 
 
 @router.get("/status")
@@ -80,3 +81,13 @@ async def toggle_symbol_status(req: ToggleSymbolRequest):
         "enabled": req.enabled,
         "success": success,
     }
+
+
+@router.get("/multi-strategy-matrix")
+async def get_multi_strategy_matrix(symbol: Optional[str] = "NIFTY 50"):
+    """
+    Returns side-by-side comparative analysis of 5 parallel quantitative strategies
+    running on the selected stock (NIFTY 50, Bank Nifty, Gold, Silver, USD/INR, etc.).
+    Includes win rates %, total trades, net P&L, live position status, and champion strategy.
+    """
+    return trading_bot.get_multi_strategy_matrix(symbol=symbol)
