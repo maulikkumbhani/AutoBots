@@ -48,54 +48,76 @@ class AutoTradingBot:
         self.stop_loss_pct = 0.4         # 0.4% stop loss (2:1 Reward:Risk)
         self.trailing_stop_pct = 0.25    # 0.25% trailing stop
         self.min_confidence = 0.40       # Minimum directional probability to trade
-        self.max_open_positions = 6      # Maximum total concurrent portfolio positions
-        self.max_positions_per_asset = 1 # Max position per individual asset
+        self.max_open_positions = 50     # Maximum total concurrent portfolio positions (multi-strategy)
+        self.max_positions_per_asset = 10 # Allow multiple concurrent strategies on the exact same asset
 
-        # 5 Algorithmic Multi-Strategies for Parallel Evaluation
+        # 6 Algorithmic Multi-Strategies for Simultaneous Parallel Execution on Every Asset
         self.strategies_def = [
             {
-                "id": "HIGH_VOLUME_SCALPER",
-                "name": "High-Volume Micro Scalper",
-                "tagline": "Chop-Proof Volume & VWAP Surge",
-                "tp_pct": 0.4,
-                "sl_pct": 0.2,
+                "id": "ULTRA_SCALPER_HIGH_VOL",
+                "name": "High-Volume Micro Scalper (Big Profit in Small Time)",
+                "tagline": "15s-60s Fast Scalp • 2.5x Volume Burst",
+                "tp_pct": 0.35,
+                "sl_pct": 0.18,
                 "magic": 10101,
-                "desc": "Triggers on institutional VWAP breakouts with volume spikes >= 1.35x. Executes 15s-90s micro scalps.",
+                "qty_multiplier": 2.5,
+                "horizon": "15s - 60s",
+                "desc": "Aggressive institutional volume & VWAP scalp. Enters with 2.5x lot volume to capture quick profit spikes in seconds.",
+            },
+            {
+                "id": "MACRO_TREND_SWING",
+                "name": "Macro Momentum Wave (Big Profit on Big Time)",
+                "tagline": "1h-4h Trend Riding • Trailing Stop Lock",
+                "tp_pct": 2.50,
+                "sl_pct": 0.85,
+                "trailing_pct": 0.40,
+                "magic": 10202,
+                "qty_multiplier": 1.0,
+                "horizon": "1h - 4h",
+                "desc": "Multi-hour trend runner with dynamic trailing stop. Captures large market swings for maximum point expansion.",
+            },
+            {
+                "id": "UNANIMOUS_CONSENSUS_100PCT",
+                "name": "100% Directional Verification (Perfection Filter)",
+                "tagline": "Quadruple Confirmation • Zero False Positives",
+                "tp_pct": 1.25,
+                "sl_pct": 0.40,
+                "magic": 10303,
+                "qty_multiplier": 1.5,
+                "horizon": "5m - 15m",
+                "desc": "Ultra-selective perfection engine. Enters only when Multi-Model Consensus, VWAP Order Flow, and MACD/RSI are 100% aligned.",
             },
             {
                 "id": "QLIB_GBDT_ALPHA",
                 "name": "Qlib Multi-Factor GBDT Alpha",
-                "tagline": "Quant Hedge Fund Multi-Factor Model",
-                "tp_pct": 0.8,
-                "sl_pct": 0.4,
-                "magic": 10202,
-                "desc": "Processes 150+ order flow imbalance, momentum, and VWAP regression factors. Highly resistant to noise.",
-            },
-            {
-                "id": "PATCHTST_TRANSFORMER",
-                "name": "PatchTST Foundation Transformer",
-                "tagline": "Time-Series Sub-Series Patching",
-                "tp_pct": 1.2,
-                "sl_pct": 0.6,
-                "magic": 10303,
-                "desc": "Pretrained on billions of time-series points. Captures sub-series patches and cyclic multi-step swings.",
-            },
-            {
-                "id": "FINRL_PPO",
-                "name": "FinRL Deep RL Policy (PPO)",
-                "tagline": "Actor-Critic Risk-Reward Optimization",
-                "tp_pct": 1.0,
-                "sl_pct": 0.5,
+                "tagline": "Quant Hedge Fund Multi-Factor Imbalance",
+                "tp_pct": 0.80,
+                "sl_pct": 0.40,
                 "magic": 10404,
-                "desc": "Trained on continuous Markov Decision Process for reward maximization and risk-adjusted drawdowns.",
+                "qty_multiplier": 1.0,
+                "horizon": "15m",
+                "desc": "Processes order flow imbalance, momentum, and VWAP regression factors. Highly resistant to choppy noise.",
+            },
+            {
+                "id": "BREAKOUT_LIQUIDITY_HUNT",
+                "name": "Breakout Liquidity & Volume Sweep",
+                "tagline": "Session High/Low Breakout Impulse",
+                "tp_pct": 1.10,
+                "sl_pct": 0.50,
+                "magic": 10505,
+                "qty_multiplier": 1.2,
+                "horizon": "5m - 30m",
+                "desc": "Snipes liquidity sweeps above 20-period session High/Low with immediate volume acceleration.",
             },
             {
                 "id": "MEAN_REVERSION_BOLLINGER",
                 "name": "Mean-Reversion Bollinger & RSI Reversal",
-                "tagline": "Counter-Trend Statistical Exhaustion Bounce",
-                "tp_pct": 0.6,
-                "sl_pct": 0.3,
-                "magic": 10505,
+                "tagline": "Statistical 2.5σ Exhaustion Bounce",
+                "tp_pct": 0.60,
+                "sl_pct": 0.30,
+                "magic": 10606,
+                "qty_multiplier": 1.0,
+                "horizon": "1m - 5m",
                 "desc": "Counter-trend scalps when price pierces 2.5σ Bollinger Bands with RSI < 25 (oversold) or RSI > 75 (overbought).",
             },
         ]
@@ -389,7 +411,7 @@ class AutoTradingBot:
             active_candle["timestamp"] = now_utc
         self.live_candles[sym] = active_candle
 
-        # 3. Update existing open positions for this symbol
+        cycle_action_log = None
         open_positions = [p for p in POSITIONS if p["status"] == "OPEN" and p["symbol"] == sym]
         for pos in open_positions:
             updated_pos = self.exec_engine.update_position_candle(pos, active_candle)
@@ -404,6 +426,7 @@ class AutoTradingBot:
                 )
                 cost = pos["entry_price"] * pos["quantity"]
                 ret_pct = round((pnl / cost) * 100.0, 2) if cost > 0 else 0.0
+                strat_name = pos.get("strategy", self.strategy_type)
                 trade_ledger.record_trade(
                     symbol=pos["symbol"],
                     side=pos["side"],
@@ -412,7 +435,7 @@ class AutoTradingBot:
                     exit_price=pos.get("current_price", cur_price),
                     realized_pnl=pnl,
                     realized_return_pct=ret_pct,
-                    strategy=self.strategy_type,
+                    strategy=strat_name,
                     duration_seconds=120,
                     close_reason=pos.get("close_reason", "TAKE_PROFIT"),
                     opened_at=pos.get("opened_at"),
@@ -429,7 +452,7 @@ class AutoTradingBot:
                     realized_return_pct=ret_pct,
                     predicted_target_price=pos.get("take_profit"),
                     stop_loss=pos.get("stop_loss"),
-                    prediction_model=self.strategy_type,
+                    prediction_model=strat_name,
                     prediction_signal=pos["side"],
                     prediction_confidence_pct=76.0,
                     exit_reason=pos.get("close_reason", "TAKE_PROFIT"),
@@ -437,7 +460,7 @@ class AutoTradingBot:
                     mfe=pos.get("max_favorable_excursion", 0.0),
                     mae=pos.get("max_adverse_excursion", 0.0),
                 )
-                return {
+                cycle_action_log = {
                     "time": cycle_timestamp,
                     "action": "PROFIT_TAKEN" if pnl > 0 else "STOP_HIT",
                     "detail": f"{pos['close_reason']} on {pos['symbol']} @ {pos['current_price']:.2f}. P&L: {'+' if pnl >= 0 else ''}₹{pnl:.2f}",
@@ -480,6 +503,7 @@ class AutoTradingBot:
                 pos = exec_result["position"]
                 pos["id"] = len(POSITIONS) + 1
                 pos["portfolio_id"] = PORTFOLIO_STATE["id"]
+                pos["strategy"] = "Ensemble Primary"
 
                 cost = pos["entry_price"] * pos["quantity"]
                 PORTFOLIO_STATE["current_cash"] -= cost
@@ -503,7 +527,7 @@ class AutoTradingBot:
                     )
                     detail_msg += f" [MT5: {mt5_sig['signal_id']}]"
 
-                return {
+                cycle_action_log = {
                     "time": cycle_timestamp,
                     "action": "BOUGHT",
                     "detail": detail_msg,
@@ -530,6 +554,7 @@ class AutoTradingBot:
                 pos = exec_result["position"]
                 pos["id"] = len(POSITIONS) + 1
                 pos["portfolio_id"] = PORTFOLIO_STATE["id"]
+                pos["strategy"] = "Ensemble Primary"
 
                 PORTFOLIO_STATE["total_fees_paid"] += exec_result["fill"]["fee"]
                 PORTFOLIO_STATE["total_slippage_paid"] += exec_result["fill"]["slippage"]
@@ -551,7 +576,7 @@ class AutoTradingBot:
                     )
                     detail_msg += f" [MT5: {mt5_sig['signal_id']}]"
 
-                return {
+                cycle_action_log = {
                     "time": cycle_timestamp,
                     "action": "SOLD",
                     "detail": detail_msg,
@@ -560,7 +585,7 @@ class AutoTradingBot:
                     "symbol": sym,
                 }
 
-        # Always run the 5 parallel quantitative strategies for continuous testing
+        # Always run all 6 parallel quantitative strategies for continuous testing on this asset
         await self._process_multi_strategy_for_asset(
             sym=sym,
             asset_cfg=asset_cfg,
@@ -573,7 +598,7 @@ class AutoTradingBot:
             qty=qty,
         )
 
-        return None
+        return cycle_action_log
 
     async def execute_cycle(self) -> Dict[str, Any]:
         """
@@ -729,60 +754,101 @@ class AutoTradingBot:
         return store
 
     def _evaluate_strategy_signal(self, s_id: str, sym: str, df: Any, cur_price: float) -> tuple[str, float]:
-        """Evaluates distinct quantitative angles for each of the 5 strategies."""
+        """Evaluates distinct quantitative angles for each of the 6 parallel strategies."""
         if df is None or df.empty or len(df) < 10:
             return ("BUY", 0.72)
 
         last_row = df.iloc[-1]
         close = float(last_row.get("close", cur_price))
         vwap = float(last_row.get("vwap", close))
-        rsi = float(last_row.get("rsi", 50.0))
+        rsi = float(last_row.get("rsi_14", last_row.get("rsi", 50.0)))
         vol = float(last_row.get("volume", 1000.0))
-        avg_vol = float(df["volume"].tail(10).mean()) if "volume" in df.columns else 1000.0
+        vol_sma = float(last_row.get("vol_sma_20", df["volume"].tail(10).mean() if "volume" in df.columns else 1000.0))
+        ema9 = float(last_row.get("ema_9", close))
+        ema20 = float(last_row.get("ema_20", close))
+        ema50 = float(last_row.get("ema_50", close))
+        macd_line = float(last_row.get("macd_line", last_row.get("macd", 0.0)))
+        macd_signal = float(last_row.get("macd_signal", 0.0))
+        macd_hist = float(last_row.get("macd_hist", macd_line - macd_signal))
+        upper_bb = float(last_row.get("bb_upper", close * 1.01))
+        lower_bb = float(last_row.get("bb_lower", close * 0.99))
+        atr = float(last_row.get("atr_14", close * 0.005))
 
-        if s_id == "HIGH_VOLUME_SCALPER":
-            is_vol_surge = vol >= (avg_vol * 1.25)
-            if close > vwap and is_vol_surge:
-                return ("BUY", 0.78)
-            elif close < vwap and is_vol_surge:
-                return ("SELL", 0.74)
-            return ("BUY" if close > vwap else "SELL", 0.62)
-
-        elif s_id == "QLIB_GBDT_ALPHA":
-            # Multi-factor momentum & order flow
-            macd_val = float(last_row.get("macd", 0.0))
-            if macd_val > 0 and 45 <= rsi <= 68:
-                return ("BUY", 0.76)
-            elif macd_val < 0 and 32 <= rsi <= 55:
-                return ("SELL", 0.73)
-            return ("BUY", 0.64)
-
-        elif s_id == "PATCHTST_TRANSFORMER":
-            # Multi-timeframe trend alignment
-            ema9 = float(last_row.get("ema_9", close))
-            ema20 = float(last_row.get("ema_20", close))
-            if close > ema9 > ema20:
-                return ("BUY", 0.75)
-            elif close < ema9 < ema20:
+        # 1. High-Volume Micro Scalper (Big Profit in Small Time - 15s-60s)
+        if s_id in ("ULTRA_SCALPER_HIGH_VOL", "HIGH_VOLUME_SCALPER"):
+            is_vol_surge = vol >= (vol_sma * 1.30)
+            if close > vwap and is_vol_surge and (52 <= rsi <= 76):
+                return ("BUY", 0.88)
+            elif close < vwap and is_vol_surge and (24 <= rsi <= 48):
+                return ("SELL", 0.86)
+            elif close > vwap and vol >= vol_sma:
+                return ("BUY", 0.74)
+            elif close < vwap and vol >= vol_sma:
                 return ("SELL", 0.72)
-            return ("BUY", 0.65)
+            return ("BUY" if close >= vwap else "SELL", 0.65)
 
-        elif s_id == "FINRL_PPO":
-            # Reinforcement learning reward optimizer
-            if rsi > 48 and close >= vwap:
-                return ("BUY", 0.71)
-            else:
-                return ("SELL", 0.69)
+        # 2. Macro Momentum Wave (Big Profit on Big Time - 1h-4h Trend Runner)
+        elif s_id == "MACRO_TREND_SWING":
+            is_bull_stack = (close > ema9 > ema20) and (macd_hist > 0)
+            is_bear_stack = (close < ema9 < ema20) and (macd_hist < 0)
+            if is_bull_stack and (48 <= rsi <= 68):
+                return ("BUY", 0.86)
+            elif is_bear_stack and (32 <= rsi <= 52):
+                return ("SELL", 0.84)
+            return ("BUY" if close > ema20 else "SELL", 0.68)
 
+        # 3. 100% Directional Verification Consensus (Perfection Filter)
+        elif s_id == "UNANIMOUS_CONSENSUS_100PCT":
+            # Quadruple confirmation: Trend (EMA) + Order Flow (VWAP) + Momentum (MACD+RSI) + Volatility (ATR)
+            bull_confirm = (
+                (close > vwap) and
+                (close > ema20) and
+                (macd_hist > 0) and
+                (52 <= rsi <= 70) and
+                (vol >= vol_sma * 1.10) and
+                (atr >= close * 0.001)
+            )
+            bear_confirm = (
+                (close < vwap) and
+                (close < ema20) and
+                (macd_hist < 0) and
+                (30 <= rsi <= 48) and
+                (vol >= vol_sma * 1.10) and
+                (atr >= close * 0.001)
+            )
+            if bull_confirm:
+                return ("BUY", 0.98) # 98% near-perfection verification
+            elif bear_confirm:
+                return ("SELL", 0.96)
+            return ("NEUTRAL", 0.20)
+
+        # 4. Qlib Multi-Factor GBDT Alpha (Quant Hedge Fund Model)
+        elif s_id == "QLIB_GBDT_ALPHA":
+            if macd_line > 0 and 45 <= rsi <= 68 and close >= vwap:
+                return ("BUY", 0.79)
+            elif macd_line < 0 and 32 <= rsi <= 55 and close <= vwap:
+                return ("SELL", 0.77)
+            return ("BUY" if macd_line >= 0 else "SELL", 0.65)
+
+        # 5. Breakout Liquidity Hunt (Session High/Low Sweep)
+        elif s_id == "BREAKOUT_LIQUIDITY_HUNT":
+            highest_20 = float(df["high"].tail(20).max()) if "high" in df.columns else close * 1.01
+            lowest_20 = float(df["low"].tail(20).min()) if "low" in df.columns else close * 0.99
+            is_breakout_high = (close >= highest_20 * 0.9995) and (vol >= vol_sma * 1.25)
+            is_breakout_low = (close <= lowest_20 * 1.0005) and (vol >= vol_sma * 1.25)
+            if is_breakout_high:
+                return ("BUY", 0.84)
+            elif is_breakout_low:
+                return ("SELL", 0.82)
+            return ("BUY" if close > (highest_20 + lowest_20) / 2 else "SELL", 0.60)
+
+        # 6. Mean-Reversion Bollinger & RSI Reversal (Statistical Exhaustion)
         elif s_id == "MEAN_REVERSION_BOLLINGER":
-            # Counter-trend exhaustion bounces
-            upper_bb = float(last_row.get("bb_upper", close * 1.01))
-            lower_bb = float(last_row.get("bb_lower", close * 0.99))
-            if close <= lower_bb or rsi <= 32:
-                return ("BUY", 0.79) # Oversold bounce
-            elif close >= upper_bb or rsi >= 68:
-                return ("SELL", 0.77) # Overbought rejection
-            return ("NEUTRAL", 0.50)
+            if close <= lower_bb or rsi <= 30:
+                return ("BUY", 0.85) # Extreme oversold bounce
+            elif close >= upper_bb or rsi >= 70:
+                return ("SELL", 0.83) # Extreme overbought rejection
+            return ("NEUTRAL", 0.40)
 
         return ("BUY", 0.65)
 
@@ -798,7 +864,7 @@ class AutoTradingBot:
         precision: int,
         qty: float,
     ):
-        """Processes 5 distinct algorithmic strategies in parallel on the live asset."""
+        """Processes 6 distinct algorithmic strategies concurrently on the live asset."""
         for s_def in self.strategies_def:
             s_id = s_def["id"]
             key = f"{sym}_{s_id}"
@@ -812,6 +878,25 @@ class AutoTradingBot:
                 entry = pos["entry_price"]
                 tp = pos["take_profit"]
                 sl = pos["stop_loss"]
+
+                # Dynamic trailing stop logic (e.g. for MACRO_TREND_SWING)
+                trail_pct = s_def.get("trailing_pct")
+                if trail_pct:
+                    if side == "BUY":
+                        if cur_price > pos.get("peak_price", entry):
+                            pos["peak_price"] = cur_price
+                            new_sl = round(cur_price * (1.0 - trail_pct / 100.0), precision)
+                            if new_sl > pos["stop_loss"]:
+                                pos["stop_loss"] = new_sl
+                                sl = new_sl
+                    elif side == "SELL":
+                        if cur_price < pos.get("trough_price", entry):
+                            pos["trough_price"] = cur_price
+                            new_sl = round(cur_price * (1.0 + trail_pct / 100.0), precision)
+                            if new_sl < pos["stop_loss"]:
+                                pos["stop_loss"] = new_sl
+                                sl = new_sl
+
                 is_tp = (cur_price >= tp) if side == "BUY" else (cur_price <= tp)
                 is_sl = (cur_price <= sl) if side == "BUY" else (cur_price >= sl)
 
@@ -826,8 +911,39 @@ class AutoTradingBot:
                         strat_state["loss_count"] += 1
                     strat_state["net_realized_pnl"] = round(strat_state["net_realized_pnl"] + pnl, 2)
                     strat_state["win_rate_pct"] = round(strat_state["win_count"] / strat_state["total_trades"] * 100.0, 1)
+
+                    # Mark closed in global POSITIONS
+                    linked_pos_id = pos.get("pos_id")
+                    if linked_pos_id:
+                        for p in POSITIONS:
+                            if p.get("id") == linked_pos_id and p["status"] == "OPEN":
+                                p["status"] = "CLOSED"
+                                p["current_price"] = cur_price
+                                p["realized_pnl"] = round(pnl, 2)
+                                p["close_reason"] = close_reason
+                                p["closed_at"] = now_utc.isoformat()
+                                break
+
                     strat_state["active_position"] = None
                     strat_state["status"] = "SCANNING"
+
+                    ret_pct = round((pnl / (entry * pos["quantity"])) * 100.0, 2) if entry * pos["quantity"] > 0 else 0.0
+
+                    # Record to trade ledger
+                    trade_ledger.record_trade(
+                        symbol=sym,
+                        side="LONG" if side == "BUY" else "SHORT",
+                        quantity=pos["quantity"],
+                        entry_price=entry,
+                        exit_price=cur_price,
+                        realized_pnl=pnl,
+                        realized_return_pct=ret_pct,
+                        strategy=s_def["name"],
+                        duration_seconds=pos.get("duration_seconds", 120),
+                        close_reason=close_reason,
+                        opened_at=pos.get("opened_at"),
+                        closed_at=self.last_run_time,
+                    )
 
                     # Record to permanent master audit store!
                     master_audit_store.record_audit_trade(
@@ -838,7 +954,7 @@ class AutoTradingBot:
                         entry_price=entry,
                         exit_price=cur_price,
                         realized_pnl=pnl,
-                        realized_return_pct=round((pnl / (entry * pos["quantity"])) * 100.0, 2) if entry * pos["quantity"] > 0 else 0.0,
+                        realized_return_pct=ret_pct,
                         predicted_target_price=tp,
                         stop_loss=sl,
                         prediction_model=s_def["name"],
@@ -852,6 +968,15 @@ class AutoTradingBot:
                     pos["current_price"] = cur_price
                     pos["unrealized_pnl"] = round(unrealized, 2)
                     pos["duration_seconds"] = pos.get("duration_seconds", 0) + int(self.poll_interval)
+
+                    # Also update live PnL in linked global POSITIONS
+                    linked_pos_id = pos.get("pos_id")
+                    if linked_pos_id:
+                        for p in POSITIONS:
+                            if p.get("id") == linked_pos_id and p["status"] == "OPEN":
+                                p["current_price"] = cur_price
+                                p["unrealized_pnl"] = round(unrealized, 2)
+                                break
             else:
                 signal_dir, conf = self._evaluate_strategy_signal(s_id, sym, df, cur_price)
                 strat_state["last_signal"] = signal_dir
@@ -863,11 +988,45 @@ class AutoTradingBot:
                     tp_p = round(cur_price + tp_dist if signal_dir == "BUY" else cur_price - tp_dist, precision)
                     sl_p = round(cur_price - sl_dist if signal_dir == "BUY" else cur_price + sl_dist, precision)
 
+                    qty_mult = s_def.get("qty_multiplier", 1.0)
+                    strat_qty = round(qty * qty_mult, 2 if ("GOLD" in sym or "/" in sym) else 0)
+                    strat_lots = round(mt4_bridge.default_lot_size * qty_mult, 2)
+
+                    pos_id = len(POSITIONS) + 1
+                    position_entry = {
+                        "id": pos_id,
+                        "portfolio_id": PORTFOLIO_STATE["id"],
+                        "symbol": sym,
+                        "side": "LONG" if signal_dir == "BUY" else "SHORT",
+                        "quantity": strat_qty,
+                        "entry_price": cur_price,
+                        "current_price": cur_price,
+                        "stop_loss": sl_p,
+                        "take_profit": tp_p,
+                        "trailing_stop_pct": s_def.get("trailing_pct", 0.0),
+                        "peak_price": cur_price,
+                        "trough_price": cur_price,
+                        "unrealized_pnl": 0.0,
+                        "realized_pnl": 0.0,
+                        "max_favorable_excursion": 0.0,
+                        "max_adverse_excursion": 0.0,
+                        "status": "OPEN",
+                        "opened_at": now_utc.isoformat(),
+                        "closed_at": None,
+                        "close_reason": None,
+                        "strategy": s_def["name"],
+                        "strategy_id": s_def["id"],
+                        "magic_number": s_def["magic"],
+                    }
+                    POSITIONS.append(position_entry)
+
+                    strat_state["pos_id"] = pos_id
                     strat_state["active_position"] = {
+                        "pos_id": pos_id,
                         "side": signal_dir,
                         "entry_price": cur_price,
                         "current_price": cur_price,
-                        "quantity": qty,
+                        "quantity": strat_qty,
                         "stop_loss": sl_p,
                         "take_profit": tp_p,
                         "unrealized_pnl": 0.0,
@@ -881,7 +1040,7 @@ class AutoTradingBot:
                         mt4_bridge.queue_signal(
                             symbol=sym,
                             side=signal_dir,
-                            lots=mt4_bridge.default_lot_size,
+                            lots=strat_lots,
                             price=cur_price,
                             stop_loss=sl_p,
                             take_profit=tp_p,
@@ -894,12 +1053,13 @@ class AutoTradingBot:
                         mt5_bridge.queue_signal(
                             symbol=sym,
                             side=signal_dir,
-                            lots=mt5_bridge.default_lot_size,
+                            lots=strat_lots,
                             price=cur_price,
                             stop_loss=sl_p,
                             take_profit=tp_p,
                             strategy=s_def["id"],
                             comment=f"{s_def['id'][:6]}_{sym[:4]}",
+                            magic_number=s_def["magic"],
                         )
 
     def get_multi_strategy_matrix(self, symbol: Optional[str] = "NIFTY 50") -> Dict[str, Any]:

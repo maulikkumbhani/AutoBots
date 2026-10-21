@@ -194,7 +194,14 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
               <tbody>
                 {openPositions.map((pos) => (
                   <tr key={pos.id}>
-                    <td style={{ fontWeight: 700 }}>{pos.symbol}</td>
+                    <td style={{ fontWeight: 700 }}>
+                      <div>{pos.symbol}</div>
+                      {pos.strategy && (
+                        <div style={{ fontSize: "10px", color: "var(--accent-primary)", fontWeight: 600 }}>
+                          {pos.strategy.includes("(") ? pos.strategy.split("(")[0].trim() : pos.strategy}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <span className={`pill-badge ${pos.side === "LONG" ? "pill-bullish" : "pill-bearish"}`}>
                         {pos.side}
@@ -278,7 +285,14 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
               <tbody>
                 {closedPositions.slice().reverse().map((pos) => (
                   <tr key={pos.id}>
-                    <td style={{ fontWeight: 700 }}>{pos.symbol}</td>
+                    <td style={{ fontWeight: 700 }}>
+                      <div>{pos.symbol}</div>
+                      {pos.strategy && (
+                        <div style={{ fontSize: "10px", color: "var(--text-dim)", fontWeight: 600 }}>
+                          {pos.strategy.includes("(") ? pos.strategy.split("(")[0].trim() : pos.strategy}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <span className={`pill-badge ${pos.side === "LONG" ? "pill-bullish" : "pill-bearish"}`}>
                         {pos.side}

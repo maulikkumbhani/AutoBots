@@ -78,6 +78,7 @@ class MT5BridgeManager:
         take_profit: Optional[float] = None,
         strategy: str = "AutoBot",
         comment: str = "AutoBot AI Signal",
+        magic_number: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Queues an automated order for the MT5 Expert Advisor to execute."""
         now_utc = datetime.now(timezone.utc)
@@ -96,7 +97,7 @@ class MT5BridgeManager:
             "price": round(price, 5),
             "stop_loss": round(stop_loss, 5) if stop_loss else 0.0,
             "take_profit": round(take_profit, 5) if take_profit else 0.0,
-            "magic_number": self.magic_number,
+            "magic_number": magic_number or self.magic_number,
             "slippage": self.slippage_points,
             "strategy": strategy,
             "comment": f"{strategy[:10]}_{signal_id[-4:]}",

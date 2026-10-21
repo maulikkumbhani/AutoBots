@@ -139,9 +139,14 @@ void ParseAndExecuteSignals(string jsonStr)
       double sl       = ExtractJsonDouble(objStr, "stop_loss");
       double tp       = ExtractJsonDouble(objStr, "take_profit");
       string comment  = ExtractJsonString(objStr, "comment");
+      double magicNum = ExtractJsonDouble(objStr, "magic_number");
 
       if (lots <= 0.0) lots = InpDefaultLots;
       if (symbol == "") symbol = _Symbol;
+
+      // Isolate trades per strategy via magic number
+      if (magicNum > 0) ExtTrade.SetExpertMagicNumber((ulong)magicNum);
+      else ExtTrade.SetExpertMagicNumber(InpMagicNumber);
 
       // Ensure symbol is active in Market Watch
       SymbolSelect(symbol, true);

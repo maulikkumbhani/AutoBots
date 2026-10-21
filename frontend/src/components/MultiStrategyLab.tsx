@@ -553,7 +553,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
               <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
                 <Activity size={18} color="#38bdf8" />
                 <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                  <strong style={{ color: "#38bdf8" }}>24/7 Server Quantitative Matrix Active:</strong> Testing 5 algorithmic models concurrently on {selectedSymbol}. Zero dummy data active — Win rates and Champion badges will dynamically calculate as live/paper trades complete.
+                  <strong style={{ color: "#38bdf8" }}>24/7 Simultaneous Multi-Strategy Server Active:</strong> Testing 6 distinct algorithmic strategies concurrently on {selectedSymbol} at the same time (High-Volume Scalp, Macro Trend Swing, 100% Unanimous Consensus, Qlib Alpha, Breakout Liquidity, & Mean-Reversion).
                 </div>
               </div>
             )}
@@ -561,7 +561,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
         )}
       </div>
 
-      {/* 5 Strategies Comparison Grid */}
+      {/* 6 Strategies Comparison Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
         {matrixData?.strategies.map((strat: MultiStrategyItem) => {
           const isChamp = strat.is_champion;
