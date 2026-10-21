@@ -702,28 +702,11 @@ class AutoTradingBot:
         return False
 
     def _init_multi_strategy_store(self) -> Dict[str, Dict[str, Any]]:
-        """Seeds benchmark metrics for 5 distinct strategies across all monitored assets."""
         store = {}
-        benchmark_profiles = {
-            "NIFTY 50": {"HIGH_VOLUME_SCALPER": (15, 11, 12200.0), "QLIB_GBDT_ALPHA": (14, 11, 14500.0), "PATCHTST_TRANSFORMER": (10, 7, 8400.0), "FINRL_PPO": (9, 6, 6100.0), "MEAN_REVERSION_BOLLINGER": (8, 5, 4500.0)},
-            "BANKNIFTY": {"HIGH_VOLUME_SCALPER": (16, 13, 24500.0), "QLIB_GBDT_ALPHA": (12, 9, 16800.0), "PATCHTST_TRANSFORMER": (11, 8, 13200.0), "FINRL_PPO": (10, 7, 9800.0), "MEAN_REVERSION_BOLLINGER": (7, 4, 3200.0)},
-            "GOLD": {"HIGH_VOLUME_SCALPER": (12, 9, 2100.0), "QLIB_GBDT_ALPHA": (10, 7, 1650.0), "PATCHTST_TRANSFORMER": (14, 11, 2850.0), "FINRL_PPO": (8, 5, 1100.0), "MEAN_REVERSION_BOLLINGER": (6, 4, 850.0)},
-            "SILVER": {"HIGH_VOLUME_SCALPER": (10, 7, 720.0), "QLIB_GBDT_ALPHA": (8, 5, 510.0), "PATCHTST_TRANSFORMER": (9, 6, 640.0), "FINRL_PPO": (7, 4, 390.0), "MEAN_REVERSION_BOLLINGER": (11, 8, 880.0)},
-            "USD/INR": {"HIGH_VOLUME_SCALPER": (18, 14, 3200.0), "QLIB_GBDT_ALPHA": (15, 11, 2400.0), "PATCHTST_TRANSFORMER": (10, 7, 1500.0), "FINRL_PPO": (8, 5, 1100.0), "MEAN_REVERSION_BOLLINGER": (9, 6, 1300.0)},
-            "RELIANCE": {"HIGH_VOLUME_SCALPER": (11, 8, 4200.0), "QLIB_GBDT_ALPHA": (13, 10, 5600.0), "PATCHTST_TRANSFORMER": (9, 6, 3100.0), "FINRL_PPO": (8, 5, 2400.0), "MEAN_REVERSION_BOLLINGER": (7, 4, 1800.0)},
-            "TCS": {"HIGH_VOLUME_SCALPER": (10, 7, 3600.0), "QLIB_GBDT_ALPHA": (11, 8, 4100.0), "PATCHTST_TRANSFORMER": (8, 5, 2500.0), "FINRL_PPO": (12, 9, 4800.0), "MEAN_REVERSION_BOLLINGER": (6, 4, 1900.0)},
-            "CRUDE OIL": {"HIGH_VOLUME_SCALPER": (14, 11, 1850.0), "QLIB_GBDT_ALPHA": (10, 7, 1200.0), "PATCHTST_TRANSFORMER": (11, 8, 1450.0), "FINRL_PPO": (9, 6, 950.0), "MEAN_REVERSION_BOLLINGER": (8, 5, 750.0)},
-        }
-
         all_symbols = ["NIFTY 50", "BANKNIFTY", "GOLD", "SILVER", "USD/INR", "RELIANCE", "TCS", "CRUDE OIL"]
         for sym in all_symbols:
-            bench = benchmark_profiles.get(sym, {})
             for s_def in self.strategies_def:
                 s_id = s_def["id"]
-                t_count, w_count, pnl = bench.get(s_id, (10, 7, 5000.0))
-                l_count = t_count - w_count
-                win_rate = round((w_count / t_count * 100.0), 1) if t_count > 0 else 0.0
-
                 store[f"{sym}_{s_id}"] = {
                     "symbol": sym,
                     "strategy_id": s_id,
@@ -734,13 +717,13 @@ class AutoTradingBot:
                     "tp_pct": s_def["tp_pct"],
                     "sl_pct": s_def["sl_pct"],
                     "active_position": None,
-                    "total_trades": t_count,
-                    "win_count": w_count,
-                    "loss_count": l_count,
-                    "win_rate_pct": win_rate,
-                    "net_realized_pnl": pnl,
-                    "last_signal": "BUY" if win_rate > 70 else "NEUTRAL",
-                    "last_confidence": round(win_rate / 100.0, 2),
+                    "total_trades": 0,
+                    "win_count": 0,
+                    "loss_count": 0,
+                    "win_rate_pct": 0.0,
+                    "net_realized_pnl": 0.0,
+                    "last_signal": "SCANNING",
+                    "last_confidence": 0.0,
                     "status": "SCANNING",
                 }
         return store
@@ -940,7 +923,8 @@ class AutoTradingBot:
 
             pos = state.get("active_position")
             wr = state["win_rate_pct"]
-            if wr > best_wr:
+            trades_count = state.get("total_trades", 0)
+            if trades_count > 0 and wr > best_wr:
                 best_wr = wr
                 best_strat = s_id
 

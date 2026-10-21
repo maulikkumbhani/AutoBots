@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   fetchMasterAuditJournal,
   getMasterAuditCSVExportUrl,
+  clearMasterAuditStore,
   MasterAuditResponse,
   MasterAuditRecord,
 } from "../api";
-import { Download, RefreshCw, Shield, CheckCircle2, XCircle, TrendingUp, Filter, FileSpreadsheet } from "lucide-react";
+import { Download, RefreshCw, Shield, CheckCircle2, XCircle, TrendingUp, Filter, FileSpreadsheet, Trash2 } from "lucide-react";
 
 interface MasterTradeAuditSheetProps {
   onSelectSymbol?: (symbol: string) => void;
@@ -21,6 +22,7 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
   const [selectedSymbol, setSelectedSymbol] = useState<string>("ALL");
   const [selectedModel, setSelectedModel] = useState<string>("ALL");
   const [selectedResult, setSelectedResult] = useState<string>("ALL");
+  const [clearingStore, setClearingStore] = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -126,8 +128,8 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
           </div>
         </div>
 
-        {/* Export to CSV Action */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Export to CSV & Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <a
             href={getMasterAuditCSVExportUrl()}
             download="AutoBots_Master_Trade_Prediction_Audit.csv"
@@ -155,6 +157,38 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
           >
             <RefreshCw size={13} />
             <span>Refresh</span>
+          </button>
+
+          <button
+            onClick={async () => {
+              if (!window.confirm("Are you sure you want to clear the Master Audit Journal? All records will be reset.")) return;
+              setClearingStore(true);
+              try {
+                await clearMasterAuditStore();
+                await loadData();
+              } catch (e: any) {
+                alert("Failed to reset store: " + e?.message);
+              } finally {
+                setClearingStore(false);
+              }
+            }}
+            disabled={clearingStore}
+            style={{
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "var(--bearish-red)",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            title="Reset Master Audit Store (clears all old records)"
+          >
+            <Trash2 size={13} />
+            <span>{clearingStore ? "Resetting..." : "Reset Store"}</span>
           </button>
         </div>
       </div>
@@ -402,7 +436,7 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
                 {!data?.records || data.records.length === 0 ? (
                   <tr>
                     <td colSpan={15} style={{ textAlign: "center", padding: "30px", color: "var(--text-dim)" }}>
-                      No audit records found matching your active filters.
+                      No live trade executions recorded yet. Real Buy/Sell trades from the 24/7 server AutoBot and manual orders will permanently journal here as they execute.
                     </td>
                   </tr>
                 ) : (

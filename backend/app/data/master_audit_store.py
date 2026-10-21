@@ -27,9 +27,13 @@ class MasterAuditStore:
     def _ensure_file(self):
         if not os.path.exists(JOURNAL_FILE_PATH):
             os.makedirs(os.path.dirname(JOURNAL_FILE_PATH), exist_ok=True)
-            initial_trades = self._generate_verified_seed_audit()
-            self._save_to_disk(initial_trades)
-            self._sync_to_csv(initial_trades)
+            self._save_to_disk([])
+            self._sync_to_csv([])
+
+    def clear_all_records(self):
+        """Clears all records to guarantee a clean slate with zero dummy/demo trades."""
+        self._save_to_disk([])
+        self._sync_to_csv([])
 
     def _load_from_disk(self) -> List[Dict[str, Any]]:
         try:
@@ -49,8 +53,6 @@ class MasterAuditStore:
 
     def _sync_to_csv(self, trades: List[Dict[str, Any]]):
         """Generates an on-disk CSV sheet for direct Excel/Google Sheets opening."""
-        if not trades:
-            return
         try:
             fieldnames = [
                 "audit_id",
@@ -79,18 +81,13 @@ class MasterAuditStore:
             with open(CSV_FILE_PATH, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
-                for t in trades:
+                for t in (trades or []):
                     writer.writerow(t)
         except Exception as e:
             print(f"Error syncing master audit CSV: {e}")
 
     def _generate_verified_seed_audit(self) -> List[Dict[str, Any]]:
-        """
-        Populates realistic historical audit trades covering NIFTY 50, BANKNIFTY, GOLD,
-        SILVER, USD/INR, RELIANCE, TCS, and CRUDE OIL.
-        """
-        now = datetime.now(timezone.utc)
-        records = []
+        return []
         seed_data = [
             {
                 "mins_ago": 18,

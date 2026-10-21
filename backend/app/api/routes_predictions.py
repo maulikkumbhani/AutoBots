@@ -220,8 +220,8 @@ async def get_prediction_records(symbol: str = "NIFTY 50"):
     # Filter predictions for this symbol
     records = [p for p in PREDICTIONS_LOG if p["instrument_symbol"] == symbol]
 
-    # Seed verified recent records if empty for immediate visibility and review
-    if not records:
+    # No dummy seed data - only real predictions evaluated
+    if False and not records:
         precision = 4 if ("GBP" in symbol or "EUR" in symbol) else 2
         seeds = [
             {"mins_ago": 45, "dir": "up", "ret": 0.28, "success": True, "horizon": "10m"},

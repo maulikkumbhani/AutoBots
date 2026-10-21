@@ -658,6 +658,26 @@ export const App: React.FC = () => {
             <span style={{ fontWeight: 600 }}>Master CSV</span>
           </a>
 
+          {/* Direct MT4 EA Download Button */}
+          <a
+            href="/AutoBots_MultiStrategy_MT4.mq4"
+            download="AutoBots_MultiStrategy_MT4.mq4"
+            className="btn btn-outline"
+            style={{
+              borderColor: "rgba(56, 189, 248, 0.4)",
+              color: "#38bdf8",
+              background: "rgba(56, 189, 248, 0.08)",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            title="Download MetaTrader 4 EA (AutoBots_MultiStrategy_MT4.mq4) for OctaFX"
+          >
+            <Download size={14} />
+            <span style={{ fontWeight: 600 }}>MT4 EA (.mq4)</span>
+          </a>
+
           {/* Quick Instrument Picker Trigger Button */}
           <button
             className="btn btn-primary"

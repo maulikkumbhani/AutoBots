@@ -96,3 +96,10 @@ async def export_master_audit_csv():
             "Cache-Control": "no-cache",
         },
     )
+
+
+@router.post("/clear-master-audit")
+async def clear_master_audit():
+    """Clears the master audit journal to reset all demo/test records and start completely clean."""
+    master_audit_store.clear_all_records()
+    return {"status": "success", "message": "Master audit journal reset to zero records."}

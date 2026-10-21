@@ -499,3 +499,11 @@ export async function fetchMT4EACode(): Promise<{ filename: string; instructions
 export function getMT4EADownloadUrl(): string {
   return `${API_BASE}/mt4/bridge/download-ea`;
 }
+
+export async function clearMasterAuditStore(): Promise<any> {
+  const res = await fetch(`${API_BASE}/analytics/clear-master-audit`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to clear master audit store");
+  return res.json();
+}

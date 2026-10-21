@@ -20,8 +20,7 @@ class TradeLedgerStore:
     def _ensure_file(self):
         if not os.path.exists(LEDGER_FILE_PATH):
             os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
-            initial_trades = self._generate_verified_seed_trades()
-            self._save_to_disk(initial_trades)
+            self._save_to_disk([])
 
     def _load_from_disk(self) -> List[Dict[str, Any]]:
         try:
@@ -40,12 +39,7 @@ class TradeLedgerStore:
             print(f"Error saving trades to disk: {e}")
 
     def _generate_verified_seed_trades(self) -> List[Dict[str, Any]]:
-        """
-        Populates realistic, verified trades over the last several months/year
-        so filtering by Day, Month, Year, and Custom immediately reveals authentic metrics.
-        """
-        now = datetime.now(timezone.utc)
-        trades = []
+        return []
         trade_id = 1
 
         # Preset data points for NIFTY, BANK NIFTY, GOLD, EUR/USD

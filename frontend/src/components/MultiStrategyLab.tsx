@@ -26,7 +26,212 @@ import {
   DollarSign,
   BarChart2,
   Terminal,
+  Code,
+  Copy,
+  Check,
 } from "lucide-react";
+
+const MQL4_SOURCE_CODE = `//+------------------------------------------------------------------+
+//|                                  AutoBots_MultiStrategy_MT4.mq4  |
+//|               Copyright 2026, AutoBots Quantitative Intelligence |
+//|                                   https://github.com/maulikkumbhani|
+//+------------------------------------------------------------------+
+#property copyright "AutoBots AI Market Intelligence"
+#property link      "https://mt4.octafx.com/"
+#property version   "2.00"
+#property strict
+
+//--- Input Parameters
+input string   InpServerUrl       = "http://localhost:8000"; // AutoBots Server Base URL (or your deployed cloud domain)
+input int      InpPollIntervalMs  = 1000;                     // Polling Interval (Milliseconds)
+input double   InpDefaultLots     = 0.05;                     // Default Lot Size (OctaFX Demo)
+input int      InpMaxSlippage     = 20;                       // Max Slippage (Points)
+input bool     InpAutoTrade       = true;                     // Enable Auto-Trading Execution
+input string   InpOctaAccount     = "OctaFX-Demo-01";         // Account Identifier
+
+//--- Global Variables
+datetime g_last_poll_time = 0;
+
+int OnInit()
+{
+   Print(">>> AutoBots MT4 Multi-Strategy Bridge Initialized for OctaFX");
+   Print(">>> Target Server: ", InpServerUrl);
+   EventSetMillisecondTimer(InpPollIntervalMs);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+   Print(">>> AutoBots MT4 Bridge Deinitialized.");
+}
+
+void OnTimer()
+{
+   if(!InpAutoTrade) return;
+   PollAndExecuteSignals();
+   SendAccountTelemetry();
+}
+
+void PollAndExecuteSignals()
+{
+   string url = InpServerUrl + "/api/v1/mt4/bridge/poll-signals";
+   string headers = "User-Agent: AutoBots-MT4-Bridge\\r\\nContent-Type: application/json\\r\\n";
+   char post_data[];
+   char result[];
+   string result_headers;
+   
+   ResetLastError();
+   int res = WebRequest("GET", url, headers, 3000, post_data, result, result_headers);
+   
+   if(res == 200)
+   {
+      string response = CharArrayToString(result);
+      if(StringLen(response) > 5 && StringFind(response, "signal_id") >= 0)
+      {
+         ParseAndExecuteJsonSignals(response);
+      }
+   }
+   else if(res == -1)
+   {
+      int err = GetLastError();
+      if(err == 4060)
+      {
+         Print(">>> ERROR 4060: Add '", InpServerUrl, "' to Tools -> Options -> Expert Advisors -> Allow WebRequest!");
+      }
+   }
+}
+
+void ParseAndExecuteJsonSignals(string json_str)
+{
+   int pos = 0;
+   while((pos = StringFind(json_str, "{\\"signal_id\\"", pos)) >= 0)
+   {
+      int end_pos = StringFind(json_str, "}", pos);
+      if(end_pos < 0) break;
+      
+      string item = StringSubstr(json_str, pos, end_pos - pos + 1);
+      ExecuteSingleSignal(item);
+      pos = end_pos + 1;
+   }
+}
+
+void ExecuteSingleSignal(string item)
+{
+   string sig_id  = ExtractJsonValue(item, "signal_id");
+   string sym     = ExtractJsonValue(item, "symbol");
+   string side    = ExtractJsonValue(item, "side");
+   double lots    = StrToDouble(ExtractJsonValue(item, "lots"));
+   double sl      = StrToDouble(ExtractJsonValue(item, "stop_loss"));
+   double tp      = StrToDouble(ExtractJsonValue(item, "take_profit"));
+   int    magic   = (int)StrToInteger(ExtractJsonValue(item, "magic_number"));
+   string comment = ExtractJsonValue(item, "comment");
+
+   if(lots <= 0.0) lots = InpDefaultLots;
+   if(magic <= 0) magic = 10101;
+   if(StringLen(sym) == 0) sym = Symbol();
+
+   double ask = MarketInfo(sym, MODE_ASK);
+   double bid = MarketInfo(sym, MODE_BID);
+   
+   if(ask == 0.0 && bid == 0.0)
+   {
+      sym = Symbol();
+      ask = MarketInfo(sym, MODE_ASK);
+      bid = MarketInfo(sym, MODE_BID);
+   }
+
+   int cmd = (side == "BUY") ? OP_BUY : OP_SELL;
+   double price = (cmd == OP_BUY) ? ask : bid;
+   color  clr   = (cmd == OP_BUY) ? clrLimeGreen : clrRed;
+
+   int ticket = OrderSend(sym, cmd, lots, price, InpMaxSlippage, sl, tp, comment, magic, 0, clr);
+
+   if(ticket > 0)
+   {
+      Print(">>> [SUCCESS] Executed MT4 Order #", ticket, " (", side, " ", lots, " ", sym, " @ ", price, ")");
+      ReportExecution(sig_id, ticket, "FILLED", price, sym, side, lots, magic);
+   }
+   else
+   {
+      int err = GetLastError();
+      Print(">>> [FAILED] OrderSend failed. Error: ", err);
+      ReportExecution(sig_id, 0, "FAILED_" + IntegerToString(err), price, sym, side, lots, magic);
+   }
+}
+
+void ReportExecution(string sig_id, int ticket, string status, double price, string sym, string side, double lots, int magic)
+{
+   string url = InpServerUrl + "/api/v1/mt4/bridge/report-execution";
+   string headers = "User-Agent: AutoBots-MT4-Bridge\\r\\nContent-Type: application/json\\r\\n";
+   
+   string payload = StringConcatenate(
+      "{\\"signal_id\\":\\"", sig_id, "\\",",
+      "\\"ticket\\":", ticket, ",",
+      "\\"status\\":\\"", status, "\\",",
+      "\\"fill_price\\":", price, ",",
+      "\\"symbol\\":\\"", sym, "\\",",
+      "\\"side\\":\\"", side, "\\",",
+      "\\"lots\\":", lots, ",",
+      "\\"magic_number\\":", magic, ",",
+      "\\"account\\":\\"", InpOctaAccount, "\\"}"
+   );
+   
+   char post_data[];
+   StringToCharArray(payload, post_data, 0, StringLen(payload));
+   char result[];
+   string result_headers;
+   WebRequest("POST", url, headers, 3000, post_data, result, result_headers);
+}
+
+void SendAccountTelemetry()
+{
+   string url = InpServerUrl + "/api/v1/mt4/bridge/telemetry";
+   string headers = "User-Agent: AutoBots-MT4-Bridge\\r\\nContent-Type: application/json\\r\\n";
+   
+   string payload = StringConcatenate(
+      "{\\"balance\\":", AccountBalance(), ",",
+      "\\"equity\\":", AccountEquity(), ",",
+      "\\"margin\\":", AccountMargin(), ",",
+      "\\"free_margin\\":", AccountFreeMargin(), ",",
+      "\\"open_orders_count\\":", OrdersTotal(), ",",
+      "\\"server\\":\\"", AccountServer(), "\\",",
+      "\\"account\\":\\"", IntegerToString(AccountNumber()), "\\"}"
+   );
+   
+   char post_data[];
+   StringToCharArray(payload, post_data, 0, StringLen(payload));
+   char result[];
+   string result_headers;
+   WebRequest("POST", url, headers, 2000, post_data, result, result_headers);
+}
+
+string ExtractJsonValue(string json, string key)
+{
+   string search = "\\"" + key + "\\":";
+   int start = StringFind(json, search);
+   if(start < 0) return("");
+   start += StringLen(search);
+   
+   while(StringSubstr(json, start, 1) == " ") start++;
+   
+   if(StringSubstr(json, start, 1) == "\\"")
+   {
+      start++;
+      int end_q = StringFind(json, "\\"", start);
+      if(end_q < 0) return("");
+      return(StringSubstr(json, start, end_q - start));
+   }
+   else
+   {
+      int end_c = StringFind(json, ",", start);
+      int end_b = StringFind(json, "}", start);
+      int end = end_c;
+      if(end < 0 || (end_b >= 0 && end_b < end)) end = end_b;
+      if(end < 0) end = StringLen(json);
+      return(StringSubstr(json, start, end - start));
+   }
+}`;
 
 interface MultiStrategyLabProps {
   initialSymbol?: string;
@@ -49,6 +254,8 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
   const [mt4LotSize, setMt4LotSize] = useState<number>(0.05);
   const [isUpdatingMt4, setIsUpdatingMt4] = useState<boolean>(false);
   const [showSetupModal, setShowSetupModal] = useState<boolean>(false);
+  const [showCodeModal, setShowCodeModal] = useState<boolean>(false);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const availableSymbols = [
@@ -269,13 +476,17 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
         </div>
 
         {/* Champion Callout Bar */}
-        {matrixData && champion && (
+        {matrixData && (
           <div
             style={{
               marginTop: "14px",
               padding: "10px 14px",
-              background: "linear-gradient(90deg, rgba(234, 179, 8, 0.12), rgba(99, 102, 241, 0.12))",
-              border: "1px solid rgba(234, 179, 8, 0.35)",
+              background: champion && champion.trades_count > 0
+                ? "linear-gradient(90deg, rgba(234, 179, 8, 0.12), rgba(99, 102, 241, 0.12))"
+                : "linear-gradient(90deg, rgba(56, 189, 248, 0.08), rgba(99, 102, 241, 0.08))",
+              border: champion && champion.trades_count > 0
+                ? "1px solid rgba(234, 179, 8, 0.35)"
+                : "1px solid rgba(56, 189, 248, 0.25)",
               borderRadius: "8px",
               display: "flex",
               justifyContent: "space-between",
@@ -284,57 +495,68 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
               gap: "10px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div
-                style={{
-                  background: "rgba(234, 179, 8, 0.2)",
-                  color: "#fbbf24",
-                  padding: "6px",
-                  borderRadius: "6px",
-                  display: "flex",
-                }}
-              >
-                <Award size={18} />
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "#fbbf24", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  🏆 Current Champion Model for {selectedSymbol}
+            {champion && champion.trades_count > 0 ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "rgba(234, 179, 8, 0.2)",
+                      color: "#fbbf24",
+                      padding: "6px",
+                      borderRadius: "6px",
+                      display: "flex",
+                    }}
+                  >
+                    <Award size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#fbbf24", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      🏆 Current Champion Model for {selectedSymbol}
+                    </div>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff" }}>
+                      {champion.name} ({champion.strategy_id})
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff" }}>
-                  {champion.name} ({champion.strategy_id})
-                </div>
-              </div>
-            </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>WIN RATE</div>
-                <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--bullish-green)" }}>
-                  {champion.win_rate_pct.toFixed(1)}%
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>WIN RATE</div>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--bullish-green)" }}>
+                      {champion.win_rate_pct.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>TRADES</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                      {champion.trades_count} ({champion.wins}W / {champion.losses}L)
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>NET REALIZED P&L</div>
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 800,
+                        color: champion.net_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                      }}
+                    >
+                      {champion.net_pnl >= 0 ? "+" : ""}
+                      {selectedSymbol.includes("GOLD") || selectedSymbol.includes("SILVER") || selectedSymbol.includes("CRUDE")
+                        ? `$${champion.net_pnl.toFixed(2)}`
+                        : `₹${champion.net_pnl.toFixed(2)}`}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%" }}>
+                <Activity size={18} color="#38bdf8" />
+                <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                  <strong style={{ color: "#38bdf8" }}>24/7 Server Quantitative Matrix Active:</strong> Testing 5 algorithmic models concurrently on {selectedSymbol}. Zero dummy data active — Win rates and Champion badges will dynamically calculate as live/paper trades complete.
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>TRADES</div>
-                <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                  {champion.trades_count} ({champion.wins}W / {champion.losses}L)
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>NET REALIZED P&L</div>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 800,
-                    color: champion.net_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
-                  }}
-                >
-                  {champion.net_pnl >= 0 ? "+" : ""}
-                  {selectedSymbol.includes("GOLD") || selectedSymbol.includes("SILVER") || selectedSymbol.includes("CRUDE")
-                    ? `$${champion.net_pnl.toFixed(2)}`
-                    : `₹${champion.net_pnl.toFixed(2)}`}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -566,9 +788,9 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
               <span>Open OctaFX WebTrader</span>
             </a>
 
-            {/* Download MQL4 EA */}
+            {/* Download MQL4 EA directly from static storage */}
             <a
-              href={getMT4EADownloadUrl()}
+              href="/AutoBots_MultiStrategy_MT4.mq4"
               download="AutoBots_MultiStrategy_MT4.mq4"
               className="btn btn-primary"
               style={{
@@ -578,10 +800,29 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                 gap: "5px",
                 background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
               }}
+              title="Download AutoBots_MultiStrategy_MT4.mq4 file"
             >
               <Download size={13} />
               <span>Download MT4 EA (.mq4)</span>
             </a>
+
+            {/* View & Copy Source Code Button */}
+            <button
+              className="btn btn-outline"
+              style={{
+                fontSize: "11px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                borderColor: "#818cf8",
+                color: "#a5b4fc",
+              }}
+              onClick={() => setShowCodeModal(!showCodeModal)}
+              title="View or Copy the complete MQL4 source code"
+            >
+              <Code size={13} />
+              <span>{showCodeModal ? "Hide Code" : "💻 View / Copy Code"}</span>
+            </button>
 
             {/* Setup Instructions Toggle */}
             <button
@@ -593,6 +834,72 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
             </button>
           </div>
         </div>
+
+        {/* In-Browser MQL4 Code Viewer & Copy Drawer */}
+        {showCodeModal && (
+          <div
+            style={{
+              background: "rgba(10, 15, 30, 0.95)",
+              border: "1px solid rgba(129, 140, 248, 0.4)",
+              borderRadius: "8px",
+              padding: "16px",
+              marginBottom: "16px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Terminal size={16} color="#818cf8" />
+                <span style={{ fontWeight: 800, fontSize: "13px", color: "#e2e8f0" }}>
+                  AutoBots_MultiStrategy_MT4.mq4 (MQL4 Source Code)
+                </span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: "11px", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(MQL4_SOURCE_CODE);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2500);
+                  }}
+                >
+                  {copiedCode ? <Check size={13} /> : <Copy size={13} />}
+                  <span>{copiedCode ? "Copied to Clipboard!" : "Copy Code to Clipboard"}</span>
+                </button>
+
+                <a
+                  href="/AutoBots_MultiStrategy_MT4.mq4"
+                  download="AutoBots_MultiStrategy_MT4.mq4"
+                  className="btn btn-outline"
+                  style={{ fontSize: "11px", padding: "4px 10px" }}
+                >
+                  <Download size={13} />
+                  <span>Download .mq4</span>
+                </a>
+              </div>
+            </div>
+
+            <pre
+              style={{
+                background: "rgba(0, 0, 0, 0.5)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "6px",
+                padding: "12px",
+                maxHeight: "260px",
+                overflowY: "auto",
+                fontFamily: "var(--font-mono)",
+                fontSize: "11px",
+                color: "#94a3b8",
+                lineHeight: "1.45",
+                whiteSpace: "pre-wrap",
+                margin: 0,
+              }}
+            >
+              {MQL4_SOURCE_CODE}
+            </pre>
+          </div>
+        )}
 
         {/* Setup Guide Accordion */}
         {showSetupModal && (
