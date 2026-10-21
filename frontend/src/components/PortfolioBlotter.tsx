@@ -201,8 +201,8 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
                       </span>
                     </td>
                     <td>{pos.quantity}</td>
-                    <td>₹{pos.entry_price.toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
-                    <td>₹{pos.current_price.toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
+                    <td>₹{(pos.entry_price ?? 0).toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
+                    <td>₹{(pos.current_price ?? 0).toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
                     <td style={{ color: "var(--bearish-red)" }}>
                       {pos.stop_loss ? `₹${pos.stop_loss.toFixed(pos.symbol.includes("/") ? 4 : 2)}` : "-"}
                     </td>
@@ -210,15 +210,15 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
                       {pos.take_profit ? `₹${pos.take_profit.toFixed(pos.symbol.includes("/") ? 4 : 2)}` : "-"}
                     </td>
                     <td style={{ fontSize: "10px" }}>
-                      +{pos.max_favorable_excursion.toFixed(1)} / -{pos.max_adverse_excursion.toFixed(1)}
+                      +{(pos.max_favorable_excursion ?? 0).toFixed(1)} / -{(pos.max_adverse_excursion ?? 0).toFixed(1)}
                     </td>
                     <td
                       style={{
                         fontWeight: 700,
-                        color: pos.unrealized_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                        color: (pos.unrealized_pnl ?? 0) >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                       }}
                     >
-                      {pos.unrealized_pnl >= 0 ? "+" : ""}₹{pos.unrealized_pnl.toFixed(2)}
+                      {(pos.unrealized_pnl ?? 0) >= 0 ? "+" : ""}₹{(pos.unrealized_pnl ?? 0).toFixed(2)}
                     </td>
                     <td>
                       <button
@@ -284,8 +284,8 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
                         {pos.side}
                       </span>
                     </td>
-                    <td>₹{pos.entry_price.toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
-                    <td>₹{pos.current_price.toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
+                    <td>₹{(pos.entry_price ?? 0).toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
+                    <td>₹{(pos.current_price ?? 0).toFixed(pos.symbol.includes("/") ? 4 : 2)}</td>
                     <td>
                       <span className="pill-badge pill-neutral" style={{ fontSize: "10px" }}>
                         {pos.close_reason || "MANUAL"}
@@ -294,10 +294,10 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
                     <td
                       style={{
                         fontWeight: 700,
-                        color: pos.realized_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                        color: (pos.realized_pnl ?? 0) >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                       }}
                     >
-                      {pos.realized_pnl >= 0 ? "+" : ""}₹{pos.realized_pnl.toFixed(2)}
+                      {(pos.realized_pnl ?? 0) >= 0 ? "+" : ""}₹{(pos.realized_pnl ?? 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}

@@ -484,7 +484,7 @@ export const TradingViewChart: React.FC<Props> = ({
             <div className="legend-item" style={{ color: "#10b981", fontWeight: 700 }}>
               <span className="color-dot" style={{ background: "#10b981" }}></span>
               <span>
-                Target: {targetPrice.toFixed(symbol.includes("/") ? 4 : 2)}
+                Target: {Number(targetPrice).toFixed(symbol.includes("/") ? 4 : 2)}
                 {targetHitTime && (() => {
                   try {
                     const d = new Date(targetHitTime);
@@ -504,7 +504,7 @@ export const TradingViewChart: React.FC<Props> = ({
           {stopLossPrice && (
             <div className="legend-item" style={{ color: "#ef4444", fontWeight: 700 }}>
               <span className="color-dot" style={{ background: "#ef4444" }}></span>
-              <span>SL: {stopLossPrice.toFixed(symbol.includes("/") ? 4 : 2)}</span>
+              <span>SL: {Number(stopLossPrice).toFixed(symbol.includes("/") ? 4 : 2)}</span>
             </div>
           )}
         </div>

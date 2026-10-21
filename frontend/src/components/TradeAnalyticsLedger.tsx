@@ -309,7 +309,7 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                         : "#f87171",
                   }}
                 >
-                  {summary.win_rate_pct.toFixed(1)}%
+                  {(summary.win_rate_pct ?? 0).toFixed(1)}%
                 </span>
                 <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
                   ({summary.win_count}W / {summary.loss_count}L)
@@ -372,8 +372,8 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
               </span>
             </div>
             <div className="kpi-footer">
-              <span style={{ color: "#34d399" }}>+₹{summary.gross_profit.toFixed(0)}</span>
-              <span style={{ color: "#f87171" }}>-₹{summary.gross_loss.toFixed(0)}</span>
+              <span style={{ color: "#34d399" }}>+₹{(summary.gross_profit ?? 0).toFixed(0)}</span>
+              <span style={{ color: "#f87171" }}>-₹{(summary.gross_loss ?? 0).toFixed(0)}</span>
             </div>
           </div>
 
@@ -388,19 +388,19 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                 className="kpi-value"
                 style={{
                   color:
-                    summary.profit_factor >= 2.0
+                    (summary.profit_factor ?? 0) >= 2.0
                       ? "#38bdf8"
-                      : summary.profit_factor >= 1.0
+                      : (summary.profit_factor ?? 0) >= 1.0
                       ? "#fbbf24"
                       : "#f87171",
                 }}
               >
-                {summary.profit_factor >= 99 ? "∞" : `${summary.profit_factor.toFixed(2)}x`}
+                {(summary.profit_factor ?? 0) >= 99 ? "∞" : `${(summary.profit_factor ?? 0).toFixed(2)}x`}
               </span>
             </div>
             <div className="kpi-footer">
-              <span>Avg W: ₹{summary.avg_win.toFixed(0)}</span>
-              <span>Avg L: ₹{summary.avg_loss.toFixed(0)}</span>
+              <span>Avg W: ₹{(summary.avg_win ?? 0).toFixed(0)}</span>
+              <span>Avg L: ₹{(summary.avg_loss ?? 0).toFixed(0)}</span>
             </div>
           </div>
 
@@ -563,7 +563,7 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                     {strat.pnl >= 0 ? "+" : ""}₹{strat.pnl.toLocaleString("en-IN")}
                   </div>
                   <div style={{ fontSize: "10px", color: "#38bdf8", fontWeight: 700 }}>
-                    {strat.win_rate.toFixed(0)}% Win
+                    {(strat.win_rate ?? 0).toFixed(0)}% Win
                   </div>
                 </div>
               </div>
@@ -667,10 +667,10 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                       {t.quantity}
                     </td>
                     <td style={{ textAlign: "right", color: "var(--text-muted)" }}>
-                      ₹{t.entry_price.toFixed(2)}
+                      ₹{(t.entry_price ?? 0).toFixed(2)}
                     </td>
                     <td style={{ textAlign: "right", color: "var(--text-main)" }}>
-                      ₹{t.exit_price.toFixed(2)}
+                      ₹{(t.exit_price ?? 0).toFixed(2)}
                     </td>
                     <td style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "11px", fontFamily: "var(--font-sans)" }}>
                       {formatDuration(t.duration_seconds)}
@@ -679,13 +679,13 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                       style={{
                         textAlign: "right",
                         fontWeight: 800,
-                        color: t.realized_pnl >= 0 ? "#34d399" : "#f87171",
+                        color: (t.realized_pnl ?? 0) >= 0 ? "#34d399" : "#f87171",
                       }}
                     >
-                      {t.realized_pnl >= 0 ? "+" : ""}₹{t.realized_pnl.toFixed(2)}
+                      {(t.realized_pnl ?? 0) >= 0 ? "+" : ""}₹{(t.realized_pnl ?? 0).toFixed(2)}
                       <span style={{ fontSize: "10px", marginLeft: "4px", opacity: 0.8, fontWeight: 500 }}>
-                        ({t.realized_return_pct >= 0 ? "+" : ""}
-                        {t.realized_return_pct.toFixed(2)}%)
+                        {((t.realized_return_pct ?? 0) >= 0 ? "+" : "")}
+                        {(t.realized_return_pct ?? 0).toFixed(2)}%)
                       </span>
                     </td>
                     <td style={{ textAlign: "center" }}>

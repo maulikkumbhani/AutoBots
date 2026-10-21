@@ -481,10 +481,10 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
             style={{
               marginTop: "14px",
               padding: "10px 14px",
-              background: champion && champion.trades_count > 0
+              background: champion && (champion.total_trades ?? 0) > 0
                 ? "linear-gradient(90deg, rgba(234, 179, 8, 0.12), rgba(99, 102, 241, 0.12))"
                 : "linear-gradient(90deg, rgba(56, 189, 248, 0.08), rgba(99, 102, 241, 0.08))",
-              border: champion && champion.trades_count > 0
+              border: champion && (champion.total_trades ?? 0) > 0
                 ? "1px solid rgba(234, 179, 8, 0.35)"
                 : "1px solid rgba(56, 189, 248, 0.25)",
               borderRadius: "8px",
@@ -495,7 +495,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
               gap: "10px",
             }}
           >
-            {champion && champion.trades_count > 0 ? (
+            {champion && (champion.total_trades ?? 0) > 0 ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <div
@@ -514,7 +514,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                       🏆 Current Champion Model for {selectedSymbol}
                     </div>
                     <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff" }}>
-                      {champion.name} ({champion.strategy_id})
+                      {champion.strategy_name} ({champion.strategy_id})
                     </div>
                   </div>
                 </div>
@@ -523,13 +523,13 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>WIN RATE</div>
                     <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--bullish-green)" }}>
-                      {champion.win_rate_pct.toFixed(1)}%
+                      {(champion.win_rate_pct ?? 0).toFixed(1)}%
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>TRADES</div>
                     <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                      {champion.trades_count} ({champion.wins}W / {champion.losses}L)
+                      {champion.total_trades ?? 0} ({champion.win_count ?? 0}W / {champion.loss_count ?? 0}L)
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -538,13 +538,13 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                       style={{
                         fontSize: "14px",
                         fontWeight: 800,
-                        color: champion.net_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                        color: (champion.net_realized_pnl ?? 0) >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                       }}
                     >
-                      {champion.net_pnl >= 0 ? "+" : ""}
+                      {(champion.net_realized_pnl ?? 0) >= 0 ? "+" : ""}
                       {selectedSymbol.includes("GOLD") || selectedSymbol.includes("SILVER") || selectedSymbol.includes("CRUDE")
-                        ? `$${champion.net_pnl.toFixed(2)}`
-                        : `₹${champion.net_pnl.toFixed(2)}`}
+                        ? `$${(champion.net_realized_pnl ?? 0).toFixed(2)}`
+                        : `₹${(champion.net_realized_pnl ?? 0).toFixed(2)}`}
                     </div>
                   </div>
                 </div>
@@ -599,7 +599,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                       textTransform: "uppercase",
                     }}
                   >
-                    {strat.type}
+                    {strat.tagline || "QUANT MODEL"}
                   </span>
 
                   {isChamp ? (
@@ -627,7 +627,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                 </div>
 
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff", lineHeight: "1.3" }}>
-                  {strat.name}
+                  {strat.strategy_name}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px", lineHeight: "1.4" }}>
                   {strat.description}
@@ -642,10 +642,10 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                     style={{
                       fontSize: "14px",
                       fontWeight: 800,
-                      color: strat.win_rate_pct >= 65 ? "var(--bullish-green)" : strat.win_rate_pct >= 50 ? "#38bdf8" : "var(--bearish-red)",
+                      color: (strat.win_rate_pct ?? 0) >= 65 ? "var(--bullish-green)" : (strat.win_rate_pct ?? 0) >= 50 ? "#38bdf8" : "var(--bearish-red)",
                     }}
                   >
-                    {strat.win_rate_pct.toFixed(1)}%
+                    {(strat.win_rate_pct ?? 0).toFixed(1)}%
                   </span>
                 </div>
 
@@ -654,8 +654,8 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                   <div
                     style={{
                       height: "100%",
-                      width: `${Math.min(strat.win_rate_pct, 100)}%`,
-                      background: strat.win_rate_pct >= 65 ? "var(--bullish-green)" : "#38bdf8",
+                      width: `${Math.min(strat.win_rate_pct ?? 0, 100)}%`,
+                      background: (strat.win_rate_pct ?? 0) >= 65 ? "var(--bullish-green)" : "#38bdf8",
                       borderRadius: "3px",
                       transition: "width 0.3s ease",
                     }}
@@ -666,7 +666,7 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                   <div>
                     <span style={{ color: "var(--text-dim)" }}>Trades: </span>
                     <span style={{ fontWeight: 700 }}>
-                      {strat.trades_count} ({strat.wins}W / {strat.losses}L)
+                      {strat.total_trades ?? 0} ({strat.win_count ?? 0}W / {strat.loss_count ?? 0}L)
                     </span>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -674,13 +674,13 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                     <span
                       style={{
                         fontWeight: 700,
-                        color: strat.net_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                        color: (strat.net_realized_pnl ?? 0) >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                       }}
                     >
-                      {strat.net_pnl >= 0 ? "+" : ""}
+                      {(strat.net_realized_pnl ?? 0) >= 0 ? "+" : ""}
                       {selectedSymbol.includes("GOLD") || selectedSymbol.includes("SILVER") || selectedSymbol.includes("CRUDE")
-                        ? `$${strat.net_pnl.toFixed(2)}`
-                        : `₹${strat.net_pnl.toFixed(2)}`}
+                        ? `$${(strat.net_realized_pnl ?? 0).toFixed(2)}`
+                        : `₹${(strat.net_realized_pnl ?? 0).toFixed(2)}`}
                     </span>
                   </div>
                 </div>
@@ -701,10 +701,10 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                       }}
                     >
                       {pos.side === "BUY" ? "LONG" : "SHORT"} (
-                      {pos.unrealized_pnl >= 0 ? "+" : ""}
+                      {(pos.unrealized_pnl ?? 0) >= 0 ? "+" : ""}
                       {selectedSymbol.includes("GOLD") || selectedSymbol.includes("SILVER") || selectedSymbol.includes("CRUDE")
-                        ? `$${pos.unrealized_pnl.toFixed(2)}`
-                        : `₹${pos.unrealized_pnl.toFixed(2)}`}
+                        ? `$${(pos.unrealized_pnl ?? 0).toFixed(2)}`
+                        : `₹${(pos.unrealized_pnl ?? 0).toFixed(2)}`}
                       )
                     </span>
                   ) : (
@@ -713,9 +713,9 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text-dim)", fontSize: "10px" }}>
-                  <span>SL: {(strat.stop_loss_pct * 100).toFixed(2)}%</span>
-                  <span>TP: {(strat.take_profit_pct * 100).toFixed(2)}%</span>
-                  <span>Horizon: {strat.max_hold_seconds}s</span>
+                  <span>SL: {((strat.sl_pct ?? 0.005) * 100).toFixed(2)}%</span>
+                  <span>TP: {((strat.tp_pct ?? 0.01) * 100).toFixed(2)}%</span>
+                  <span>Magic: {strat.magic_number}</span>
                 </div>
               </div>
 

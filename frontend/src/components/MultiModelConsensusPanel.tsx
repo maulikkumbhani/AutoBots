@@ -218,7 +218,7 @@ export const MultiModelConsensusPanel: React.FC<Props> = ({
             <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px", borderRadius: "4px" }}>
               <div style={{ color: "var(--text-dim)", fontSize: "10px" }}>Current Asset Price</div>
               <div style={{ fontWeight: 700, color: "var(--text-main)", fontSize: "13px" }}>
-                {currencySign}{data?.as_of_price.toFixed(precision)}
+                {currencySign}{(data?.as_of_price ?? 0).toFixed(precision)}
               </div>
             </div>
             <div style={{ background: "rgba(16, 185, 129, 0.08)", padding: "8px", borderRadius: "4px", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
@@ -226,7 +226,7 @@ export const MultiModelConsensusPanel: React.FC<Props> = ({
                 <Target size={11} /> Consensus Target Price
               </div>
               <div style={{ fontWeight: 700, color: "var(--bullish-green)", fontSize: "13px" }}>
-                {currencySign}{consensus.consensus_target.toFixed(precision)}
+                {currencySign}{(consensus.consensus_target ?? 0).toFixed(precision)}
               </div>
             </div>
             <div style={{ background: "rgba(239, 68, 68, 0.08)", padding: "8px", borderRadius: "4px", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
@@ -234,7 +234,7 @@ export const MultiModelConsensusPanel: React.FC<Props> = ({
                 <Shield size={11} /> Consensus Stop-Loss
               </div>
               <div style={{ fontWeight: 700, color: "var(--bearish-red)", fontSize: "13px" }}>
-                {currencySign}{consensus.consensus_stop_loss.toFixed(precision)}
+                {currencySign}{(consensus.consensus_stop_loss ?? 0).toFixed(precision)}
               </div>
             </div>
             <div style={{ background: "rgba(99, 102, 241, 0.12)", padding: "8px", borderRadius: "4px", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
@@ -246,7 +246,7 @@ export const MultiModelConsensusPanel: React.FC<Props> = ({
               </div>
               <div style={{ fontSize: "10px", color: "var(--text-dim)", marginTop: "2px", display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--bullish-green)", fontWeight: 600 }}>{formatCountdown(consensus.consensus_target_hit_time)}</span>
-                <span>{consensus.consensus_velocity_pts_per_sec ? `${consensus.consensus_velocity_pts_per_sec.toFixed(4)} pts/s` : ""}</span>
+                <span>{consensus.consensus_velocity_pts_per_sec ? `${(consensus.consensus_velocity_pts_per_sec ?? 0).toFixed(4)} pts/s` : ""}</span>
               </div>
             </div>
           </div>
@@ -411,7 +411,7 @@ export const MultiModelConsensusPanel: React.FC<Props> = ({
               {Object.entries(data.custom_model_weights.weights).map(([k, v]) => (
                 <div key={k} style={{ background: "rgba(255, 255, 255, 0.03)", padding: "4px", borderRadius: "4px" }}>
                   <div style={{ color: "var(--text-dim)", fontSize: "9px", textTransform: "uppercase" }}>{k}</div>
-                  <div style={{ fontWeight: 700, color: "var(--accent-primary)" }}>{(v * 100).toFixed(1)}%</div>
+                  <div style={{ fontWeight: 700, color: "var(--accent-primary)" }}>{((Number(v) || 0) * 100).toFixed(1)}%</div>
                 </div>
               ))}
             </div>

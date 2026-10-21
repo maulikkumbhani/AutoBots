@@ -174,7 +174,7 @@ export const PredictionCard: React.FC<Props> = ({
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "6px", borderRadius: "4px" }}>
             <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>Signal Entry</div>
             <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-main)" }}>
-              {forecast.as_of_price.toFixed(precision)}
+              {(forecast.as_of_price ?? 0).toFixed(precision)}
             </div>
           </div>
           <div style={{ background: "rgba(16, 185, 129, 0.08)", padding: "6px", borderRadius: "4px", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
@@ -283,7 +283,7 @@ export const PredictionCard: React.FC<Props> = ({
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid rgba(255, 255, 255, 0.05)", fontSize: "10px", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <Gauge size={11} color="var(--neutral-blue)" /> Price Speed: <strong style={{ color: "var(--text-main)" }}>{velocityPtsPerSec.toFixed(4)} pts/sec</strong>
+            <Gauge size={11} color="var(--neutral-blue)" /> Price Speed: <strong style={{ color: "var(--text-main)" }}>{(velocityPtsPerSec ?? 0).toFixed(4)} pts/sec</strong>
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             <Activity size={11} color="var(--accent-primary)" /> Volatility Adjusted ATR

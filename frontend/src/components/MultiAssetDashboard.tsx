@@ -604,7 +604,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                           fontFamily: "var(--font-mono)",
                         }}
                       >
-                        {winRate.toFixed(1)}%
+                        {((winRate ?? 0)).toFixed(1)}%
                       </span>
                     </div>
 
@@ -747,7 +747,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                               : "var(--text-muted)",
                         }}
                       >
-                        {asset.win_rate_pct.toFixed(1)}%
+                        {((asset.win_rate_pct ?? 0)).toFixed(1)}%
                       </span>
                     </td>
                     <td>
