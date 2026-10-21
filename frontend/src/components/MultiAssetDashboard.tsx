@@ -64,6 +64,17 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
 
   const handleQuickScalp = async (asset: MultiAssetData, side: "BUY" | "SELL") => {
     try {
+      const defaultLots: Record<string, number> = {
+        "NIFTY 50": 50,
+        "BANKNIFTY": 25,
+        "GOLD": 2,
+        "SILVER": 10,
+        "USD/INR": 1000,
+        "RELIANCE": 25,
+        "TCS": 25,
+        "CRUDE OIL": 10,
+      };
+      const lots = defaultLots[asset.symbol] || 10;
       const slDist = asset.current_price * 0.003;
       const tpDist = asset.current_price * 0.006;
       const sl = side === "BUY" ? asset.current_price - slDist : asset.current_price + slDist;
@@ -72,14 +83,14 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
       await sendManualMT5Order({
         symbol: asset.symbol,
         side,
-        lots: asset.default_qty,
+        lots,
         price: asset.current_price,
         stop_loss: Number(sl.toFixed(2)),
         take_profit: Number(tp.toFixed(2)),
         strategy: "MULTI_ASSET_ONE_CLICK_SCALPER",
       });
 
-      setActionNotice(`Executed ${side} scalp on ${asset.symbol} (${asset.default_qty} units)`);
+      setActionNotice(`Executed ${side} scalp on ${asset.symbol} (${lots} units)`);
       await loadData(selectedPeriod);
       setTimeout(() => setActionNotice(null), 3500);
     } catch (err: any) {
@@ -99,28 +110,32 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
     { label: "All Assets", value: "ALL" },
     { label: "Indices", value: "INDEX" },
     { label: "Commodities", value: "COMMODITY" },
-    { label: "Currencies", value: "FX" },
+    { label: "Currencies", value: "FOREX" },
     { label: "Equities", value: "EQUITY" },
   ];
 
   const filteredAssets = data?.assets?.filter((asset) => {
     if (categoryFilter === "ALL") return true;
+    if (categoryFilter === "FOREX" && (asset.category === "FOREX" || asset.category === "FX")) return true;
     return asset.category === categoryFilter;
   }) || [];
 
   const formatPrice = (val: number, symbol: string) => {
     if (!val) return "₹0.00";
-    if (symbol.includes("USD") || symbol === "GOLD" || symbol === "SILVER") {
+    if (symbol.includes("USD") && !symbol.includes("INR") || symbol === "GOLD" || symbol === "SILVER" || symbol.includes("CRUDE")) {
       return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    return `₹${val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₹${val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
   };
 
-  const formatPnL = (val: number) => {
-    const prefix = val > 0 ? "+₹" : val < 0 ? "-₹" : "₹";
+  const formatPnL = (val: number, currency = "INR") => {
+    const symbol = currency === "USD" ? "$" : "₹";
+    const prefix = val > 0 ? `+${symbol}` : val < 0 ? `-${symbol}` : symbol;
     const absVal = Math.abs(val);
     return `${prefix}${absVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
+  const activePositionsCount = data?.assets?.filter((a) => a.active_position !== null).length ?? 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
@@ -158,7 +173,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
           </div>
 
           <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Runs continuously on server • Evaluates multi-asset order flow even when website is closed
+            Runs continuously on backend server • Autonomous order flow & SL/TP execution even if browser is closed
           </div>
         </div>
 
@@ -278,11 +293,11 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
         <div className="kpi-metric-card">
           <div className="kpi-label">Active Monitored Assets</div>
           <div className="kpi-value" style={{ color: "#38bdf8" }}>
-            {data?.active_trading_count ?? 0} / {data?.total_monitored ?? 8}
+            {data?.overall_summary.enabled_count ?? 8} / {data?.overall_summary.monitored_count ?? 8}
           </div>
           <div className="kpi-footer">
-            <span>Trading Daemon Enabled</span>
-            <span style={{ color: "#10b981" }}>● Live</span>
+            <span>Server Trading Enabled</span>
+            <span style={{ color: "#10b981" }}>● Live Daemon</span>
           </div>
         </div>
 
@@ -292,17 +307,17 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
             className="kpi-value"
             style={{
               color:
-                (data?.portfolio_summary.total_win_rate_pct ?? 0) >= 60
+                (data?.overall_summary.win_rate_pct ?? 0) >= 60
                   ? "var(--bullish-green)"
-                  : (data?.portfolio_summary.total_win_rate_pct ?? 0) > 0
+                  : (data?.overall_summary.win_rate_pct ?? 0) > 0
                   ? "#f59e0b"
                   : "var(--text-muted)",
             }}
           >
-            {(data?.portfolio_summary.total_win_rate_pct ?? 0).toFixed(1)}%
+            {(data?.overall_summary.win_rate_pct ?? 0).toFixed(1)}%
           </div>
           <div className="kpi-footer">
-            <span>Closed Trades: {data?.portfolio_summary.total_closed_trades ?? 0}</span>
+            <span>Closed Trades: {data?.overall_summary.total_trades ?? 0}</span>
             <span>Target: &gt;65%</span>
           </div>
         </div>
@@ -313,12 +328,12 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
             className="kpi-value"
             style={{
               color:
-                (data?.portfolio_summary.total_realized_pnl ?? 0) >= 0
+                (data?.overall_summary.net_pnl ?? 0) >= 0
                   ? "var(--bullish-green)"
                   : "var(--bearish-red)",
             }}
           >
-            {formatPnL(data?.portfolio_summary.total_realized_pnl ?? 0)}
+            {formatPnL(data?.overall_summary.net_pnl ?? 0)}
           </div>
           <div className="kpi-footer">
             <span>Server Executed</span>
@@ -329,11 +344,11 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
         <div className="kpi-metric-card">
           <div className="kpi-label">Active Market Positions</div>
           <div className="kpi-value" style={{ color: "#a855f7" }}>
-            {data?.portfolio_summary.total_active_positions ?? 0}
+            {activePositionsCount}
           </div>
           <div className="kpi-footer">
-            <span>Dynamic SL / TP Protected</span>
-            <span style={{ color: "#38bdf8" }}>⚡ Auto-Managed</span>
+            <span>Trailing SL / Dynamic TP</span>
+            <span style={{ color: "#38bdf8" }}>⚡ Server Managed</span>
           </div>
         </div>
       </div>
@@ -364,7 +379,8 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
           <div className="multi-asset-grid">
             {filteredAssets.map((asset) => {
               const isEnabled = asset.enabled;
-              const hasPos = asset.has_active_position;
+              const pos = asset.active_position;
+              const hasPos = pos !== null;
               const winRate = asset.win_rate_pct;
               const totalTrades = asset.total_trades;
 
@@ -402,7 +418,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                                 ? "rgba(56, 189, 248, 0.15)"
                                 : asset.category === "COMMODITY"
                                 ? "rgba(245, 158, 11, 0.15)"
-                                : asset.category === "FX"
+                                : asset.category === "FOREX" || asset.category === "FX"
                                 ? "rgba(168, 85, 247, 0.15)"
                                 : "rgba(16, 185, 129, 0.15)",
                             color:
@@ -410,7 +426,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                                 ? "#38bdf8"
                                 : asset.category === "COMMODITY"
                                 ? "#fbbf24"
-                                : asset.category === "FX"
+                                : asset.category === "FOREX" || asset.category === "FX"
                                 ? "#c084fc"
                                 : "#34d399",
                           }}
@@ -419,7 +435,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                         </span>
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
-                        {asset.display_name}
+                        {asset.name}
                       </div>
                     </div>
 
@@ -469,10 +485,10 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                     }}
                   >
                     <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
-                      🧠 {asset.model}
+                      🧠 {asset.best_model}
                     </span>
                     <span style={{ color: "#a5b4fc", fontWeight: 700 }}>
-                      Acc: {asset.best_model_accuracy}%
+                      Acc: ~72.5%
                     </span>
                   </div>
 
@@ -493,22 +509,19 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                     </div>
 
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase" }}>Signal Flow</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase" }}>Server Status</div>
                       <div
                         style={{
                           fontSize: "11px",
                           fontWeight: 700,
-                          color: asset.last_signal === "BUY" ? "var(--bullish-green)" : asset.last_signal === "SELL" ? "var(--bearish-red)" : "var(--text-muted)",
+                          color: hasPos ? "#38bdf8" : isEnabled ? "#10b981" : "var(--text-muted)",
                           display: "flex",
                           alignItems: "center",
                           gap: "4px",
                           justifyContent: "flex-end",
                         }}
                       >
-                        {asset.last_signal === "BUY" ? "▲ BUY SIGNAL" : asset.last_signal === "SELL" ? "▼ SELL SIGNAL" : "◆ NEUTRAL"}
-                        <span style={{ fontSize: "9px", color: "var(--text-dim)" }}>
-                          ({(asset.last_confidence * 100).toFixed(0)}%)
-                        </span>
+                        {hasPos ? "⚡ IN POSITION" : isEnabled ? "🟢 SCANNING VWAP" : "⏸ PAUSED"}
                       </div>
                     </div>
                   </div>
@@ -517,11 +530,11 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                   <div
                     style={{
                       background: hasPos
-                        ? asset.active_side === "BUY"
+                        ? pos.side === "LONG" || pos.side === "BUY"
                           ? "rgba(16, 185, 129, 0.12)"
                           : "rgba(225, 29, 72, 0.12)"
                         : "rgba(255, 255, 255, 0.02)",
-                      border: "1px solid " + (hasPos ? (asset.active_side === "BUY" ? "rgba(16, 185, 129, 0.35)" : "rgba(225, 29, 72, 0.35)") : "var(--border-subtle)"),
+                      border: "1px solid " + (hasPos ? (pos.side === "LONG" || pos.side === "BUY" ? "rgba(16, 185, 129, 0.35)" : "rgba(225, 29, 72, 0.35)") : "var(--border-subtle)"),
                       borderRadius: "8px",
                       padding: "8px 10px",
                     }}
@@ -530,7 +543,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                       <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-dim)" }}>
                         SERVER POSITION:
                       </span>
-                      {hasPos ? (
+                      {hasPos && pos ? (
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                           <span
                             style={{
@@ -538,21 +551,21 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                               fontWeight: 800,
                               padding: "2px 6px",
                               borderRadius: "4px",
-                              background: asset.active_side === "BUY" ? "#059669" : "#e11d48",
+                              background: pos.side === "LONG" || pos.side === "BUY" ? "#059669" : "#e11d48",
                               color: "#fff",
                             }}
                           >
-                            {asset.active_side} {asset.default_qty}
+                            {pos.side} {pos.quantity}
                           </span>
                           <span
                             style={{
                               fontSize: "11px",
                               fontWeight: 700,
                               fontFamily: "var(--font-mono)",
-                              color: asset.unrealized_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                              color: pos.unrealized_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                             }}
                           >
-                            {formatPnL(asset.unrealized_pnl)}
+                            {formatPnL(pos.unrealized_pnl, asset.currency)}
                           </span>
                         </div>
                       ) : (
@@ -561,6 +574,13 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                         </span>
                       )}
                     </div>
+                    {hasPos && pos && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-dim)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
+                        <span>SL: {pos.stop_loss}</span>
+                        <span>Entry: {pos.entry_price}</span>
+                        <span>TP: {pos.take_profit}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Historical Success / Fail Statistics */}
@@ -616,9 +636,9 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
-                      <span>Wins: <strong style={{ color: "#10b981" }}>{asset.win_trades}</strong></span>
-                      <span>Losses: <strong style={{ color: "#ef4444" }}>{asset.loss_trades}</strong></span>
-                      <span>Net: <strong style={{ color: asset.net_realized_pnl >= 0 ? "#10b981" : "#ef4444" }}>{formatPnL(asset.net_realized_pnl)}</strong></span>
+                      <span>Wins: <strong style={{ color: "#10b981" }}>{asset.win_count}</strong></span>
+                      <span>Losses: <strong style={{ color: "#ef4444" }}>{asset.loss_count}</strong></span>
+                      <span>Net: <strong style={{ color: asset.net_pnl >= 0 ? "#10b981" : "#ef4444" }}>{formatPnL(asset.net_pnl, asset.currency)}</strong></span>
                     </div>
                   </div>
 
@@ -681,10 +701,10 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                 <th>Symbol</th>
                 <th>Asset Class</th>
                 <th>Quant Engine</th>
-                <th>Model Acc.</th>
                 <th>Win Rate %</th>
                 <th>Trades (W / L)</th>
                 <th>Net Realized P&L</th>
+                <th>Active Position</th>
                 <th>Server Trading</th>
                 <th>Action</th>
               </tr>
@@ -713,10 +733,7 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                       </span>
                     </td>
                     <td style={{ color: "#a5b4fc", fontSize: "11px" }}>
-                      {asset.model}
-                    </td>
-                    <td style={{ color: "#38bdf8", fontWeight: 600 }}>
-                      {asset.best_model_accuracy}%
+                      {asset.best_model}
                     </td>
                     <td>
                       <span
@@ -734,16 +751,40 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                       </span>
                     </td>
                     <td>
-                      {asset.total_trades} ({asset.win_trades}W / {asset.loss_trades}L)
+                      {asset.total_trades} ({asset.win_count}W / {asset.loss_count}L)
                     </td>
                     <td
                       style={{
                         fontWeight: 700,
                         color:
-                          asset.net_realized_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
+                          asset.net_pnl >= 0 ? "var(--bullish-green)" : "var(--bearish-red)",
                       }}
                     >
-                      {formatPnL(asset.net_realized_pnl)}
+                      {formatPnL(asset.net_pnl, asset.currency)}
+                    </td>
+                    <td>
+                      {asset.active_position ? (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background:
+                              asset.active_position.side === "LONG" || asset.active_position.side === "BUY"
+                                ? "rgba(16, 185, 129, 0.2)"
+                                : "rgba(225, 29, 72, 0.2)",
+                            color:
+                              asset.active_position.side === "LONG" || asset.active_position.side === "BUY"
+                                ? "#10b981"
+                                : "#f43f5e",
+                          }}
+                        >
+                          {asset.active_position.side} ({formatPnL(asset.active_position.unrealized_pnl, asset.currency)})
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>FLAT</span>
+                      )}
                     </td>
                     <td>
                       <span

@@ -271,43 +271,57 @@ export async function fetchMT5EACode(): Promise<{ filename: string; code: string
   return res.json();
 }
 
+export interface MultiAssetPosition {
+  id: number;
+  side: "LONG" | "SHORT" | "BUY" | "SELL";
+  quantity: number;
+  entry_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  stop_loss?: number;
+  take_profit?: number;
+}
+
 export interface MultiAssetData {
   symbol: string;
-  display_name: string;
+  name: string;
+  display_name?: string;
   category: string;
-  model: string;
+  currency?: string;
   enabled: boolean;
-  default_qty: number;
   current_price: number;
-  has_active_position: boolean;
-  active_side: "BUY" | "SELL" | null;
-  unrealized_pnl: number;
-  win_rate_pct: number;
-  win_trades: number;
-  loss_trades: number;
+  best_model: string;
+  active_position: MultiAssetPosition | null;
   total_trades: number;
-  net_realized_pnl: number;
+  win_count: number;
+  loss_count: number;
+  win_rate_pct: number;
+  net_pnl: number;
   profit_factor: number;
-  best_model_accuracy: number;
-  last_signal: string;
-  last_confidence: number;
+  best_model_accuracy?: number;
 }
 
 export interface MultiAssetOverviewResponse {
-  status: string;
-  is_running: boolean;
-  last_run_timestamp: string;
-  engine_mode: string;
-  total_monitored: number;
-  active_trading_count: number;
-  selected_period: string;
-  portfolio_summary: {
-    total_closed_trades: number;
-    total_win_rate_pct: number;
-    total_realized_pnl: number;
-    total_active_positions: number;
+  is_bot_active: boolean;
+  execution_mode: string;
+  mt5_auto_trade?: boolean;
+  period: string;
+  overall_summary: {
+    monitored_count: number;
+    enabled_count: number;
+    total_trades: number;
+    win_count: number;
+    loss_count: number;
+    win_rate_pct: number;
+    net_pnl: number;
   };
   assets: MultiAssetData[];
+  recent_logs?: Array<{
+    time: string;
+    action: string;
+    detail: string;
+    cur_price?: number;
+  }>;
 }
 
 export async function fetchMultiAssetOverview(period = "DAY"): Promise<MultiAssetOverviewResponse> {
