@@ -339,3 +339,87 @@ export async function toggleAssetTrading(symbol: string, enabled: boolean): Prom
   if (!res.ok) throw new Error("Failed to toggle asset trading");
   return res.json();
 }
+
+export interface MasterAuditRecord {
+  audit_id: string;
+  timestamp_utc: string;
+  timestamp_ist: string;
+  symbol: string;
+  asset_category: string;
+  action: "BUY" | "SELL" | "LONG" | "SHORT";
+  quantity: number;
+  entry_price: number;
+  predicted_target_price: number;
+  stop_loss: number;
+  exit_price: number;
+  duration_seconds: number;
+  realized_pnl: number;
+  realized_return_pct: number;
+  trade_result: "WIN" | "LOSS" | "BREAKEVEN";
+  prediction_model: string;
+  prediction_signal: "BUY" | "SELL";
+  prediction_confidence_pct: number;
+  prediction_outcome: string;
+  exit_reason: string;
+  mfe: number;
+  mae: number;
+}
+
+export interface MasterAuditSummary {
+  total_historical_trades: number;
+  win_count: number;
+  loss_count: number;
+  win_rate_pct: number;
+  target_hit_count: number;
+  target_hit_rate_pct: number;
+  net_realized_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number;
+  avg_trade_pnl: number;
+  is_permanent_storage: boolean;
+}
+
+export interface ModelAttribution {
+  model: string;
+  total: number;
+  wins: number;
+  pnl: number;
+  target_hits: number;
+  win_rate: number;
+  hit_rate: number;
+}
+
+export interface MasterAuditResponse {
+  status: string;
+  period: string;
+  symbol: string;
+  summary: MasterAuditSummary;
+  model_attribution: ModelAttribution[];
+  records: MasterAuditRecord[];
+}
+
+export async function fetchMasterAuditJournal(params?: {
+  symbol?: string;
+  model?: string;
+  result?: string;
+  period?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<MasterAuditResponse> {
+  const q = new URLSearchParams();
+  if (params?.symbol && params.symbol !== "ALL") q.set("symbol", params.symbol);
+  if (params?.model && params.model !== "ALL") q.set("model", params.model);
+  if (params?.result && params.result !== "ALL") q.set("result", params.result);
+  if (params?.period) q.set("period", params.period);
+  if (params?.startDate) q.set("start_date", params.startDate);
+  if (params?.endDate) q.set("end_date", params.endDate);
+
+  const res = await fetch(`${API_BASE}/analytics/master-audit-journal?${q.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch master audit journal");
+  return res.json();
+}
+
+export function getMasterAuditCSVExportUrl(): string {
+  return `${API_BASE}/analytics/export-master-audit-csv`;
+}

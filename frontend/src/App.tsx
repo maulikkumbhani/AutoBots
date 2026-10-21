@@ -35,6 +35,7 @@ import { AccuracyDashboard } from "./components/AccuracyDashboard";
 import { MultiModelConsensusPanel } from "./components/MultiModelConsensusPanel";
 import { TradeAnalyticsLedger } from "./components/TradeAnalyticsLedger";
 import { MultiAssetDashboard } from "./components/MultiAssetDashboard";
+import { MasterTradeAuditSheet } from "./components/MasterTradeAuditSheet";
 import {
   TrendingUp,
   RefreshCw,
@@ -58,12 +59,13 @@ import {
   Shield,
   Eye,
   Award,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"multibot" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
+  const [activeTab, setActiveTab] = useState<"multibot" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -1073,6 +1075,14 @@ export const App: React.FC = () => {
               </div>
             </button>
             <button
+              className={`tab-btn ${activeTab === "master_sheet" ? "active" : ""}`}
+              onClick={() => setActiveTab("master_sheet")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <FileSpreadsheet size={14} color="#10b981" /> 📋 Master Audit Sheet (Excel/CSV)
+              </div>
+            </button>
+            <button
               className={`tab-btn ${activeTab === "portfolio" ? "active" : ""}`}
               onClick={() => setActiveTab("portfolio")}
             >
@@ -1127,6 +1137,15 @@ export const App: React.FC = () => {
           <div className="tab-content" style={{ marginTop: "12px" }}>
             {activeTab === "multibot" && (
               <MultiAssetDashboard
+                onSelectSymbol={(sym) => {
+                  setSelectedSymbol(sym);
+                  setActiveTab("portfolio");
+                }}
+              />
+            )}
+
+            {activeTab === "master_sheet" && (
+              <MasterTradeAuditSheet
                 onSelectSymbol={(sym) => {
                   setSelectedSymbol(sym);
                   setActiveTab("portfolio");

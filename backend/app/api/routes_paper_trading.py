@@ -7,6 +7,7 @@ from app.schemas.trading import OrderCreateRequest, OrderResponse, PositionRespo
 from app.execution.paper_engine import PaperTradingEngine
 from app.data.mock import MockDataProvider
 from app.data.trade_ledger import trade_ledger
+from app.data.master_audit_store import master_audit_store
 
 router = APIRouter(prefix="/paper", tags=["Paper Trading"])
 
@@ -178,6 +179,24 @@ async def get_positions():
                     opened_at=pos.get("opened_at"),
                     closed_at=now_utc,
                 )
+                master_audit_store.record_audit_trade(
+                    symbol=pos["symbol"],
+                    asset_category="INDEX" if "NIFTY" in pos["symbol"] else ("COMMODITY" if pos["symbol"] in ("GOLD", "SILVER") else "EQUITY"),
+                    action=pos["side"],
+                    quantity=pos["quantity"],
+                    entry_price=pos["entry_price"],
+                    exit_price=cur_p,
+                    realized_pnl=pos["realized_pnl"],
+                    realized_return_pct=ret_pct,
+                    predicted_target_price=pos.get("take_profit"),
+                    stop_loss=pos.get("stop_loss"),
+                    prediction_model="HIGH_VOLUME_SCALPER" if pos.get("quantity", 0) >= 100 else "AUTO_BOT",
+                    prediction_signal=pos["side"],
+                    exit_reason=pos.get("close_reason", "TAKE_PROFIT"),
+                    duration_seconds=120,
+                    mfe=pos.get("max_favorable_excursion", 0.0),
+                    mae=pos.get("max_adverse_excursion", 0.0),
+                )
 
     return [PositionResponse(**p) for p in POSITIONS]
 
@@ -232,6 +251,24 @@ async def close_all_positions():
                 close_reason="USER_CLOSE_ALL",
                 opened_at=pos.get("opened_at"),
                 closed_at=now_utc,
+            )
+            master_audit_store.record_audit_trade(
+                symbol=pos["symbol"],
+                asset_category="INDEX" if "NIFTY" in pos["symbol"] else ("COMMODITY" if pos["symbol"] in ("GOLD", "SILVER") else "EQUITY"),
+                action=pos["side"],
+                quantity=pos["quantity"],
+                entry_price=pos["entry_price"],
+                exit_price=cur_p,
+                realized_pnl=pnl,
+                realized_return_pct=ret_pct,
+                predicted_target_price=pos.get("take_profit"),
+                stop_loss=pos.get("stop_loss"),
+                prediction_model="HIGH_VOLUME_SCALPER" if pos.get("quantity", 0) >= 100 else "GENERAL_PAPER",
+                prediction_signal=pos["side"],
+                exit_reason="USER_CLOSE_ALL",
+                duration_seconds=180,
+                mfe=pos.get("max_favorable_excursion", 0.0),
+                mae=pos.get("max_adverse_excursion", 0.0),
             )
 
     return {
@@ -295,6 +332,24 @@ async def close_single_position(position_id: int):
         close_reason="MANUAL_CLOSE",
         opened_at=target.get("opened_at"),
         closed_at=now_utc,
+    )
+    master_audit_store.record_audit_trade(
+        symbol=target["symbol"],
+        asset_category="INDEX" if "NIFTY" in target["symbol"] else ("COMMODITY" if target["symbol"] in ("GOLD", "SILVER") else "EQUITY"),
+        action=target["side"],
+        quantity=target["quantity"],
+        entry_price=target["entry_price"],
+        exit_price=cur_p,
+        realized_pnl=pnl,
+        realized_return_pct=ret_pct,
+        predicted_target_price=target.get("take_profit"),
+        stop_loss=target.get("stop_loss"),
+        prediction_model="HIGH_VOLUME_SCALPER" if target["quantity"] >= 100 else "MANUAL_SCALP",
+        prediction_signal=target["side"],
+        exit_reason="MANUAL_CLOSE",
+        duration_seconds=180,
+        mfe=target.get("max_favorable_excursion", 0.0),
+        mae=target.get("max_adverse_excursion", 0.0),
     )
 
     return {

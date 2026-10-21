@@ -1,6 +1,7 @@
-from typing import Dict, Any, List
-from fastapi import APIRouter
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, Response
 from app.evaluation.metrics import EvaluationMetricsEngine
+from app.data.master_audit_store import master_audit_store
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Accuracy"])
 
@@ -55,3 +56,43 @@ async def get_accuracy_dashboard():
             "confidence_intervals": "95% Wilson Score intervals reported for every sample size.",
         },
     }
+
+
+@router.get("/master-audit-journal")
+async def get_master_audit_journal(
+    symbol: Optional[str] = None,
+    model: Optional[str] = None,
+    result: Optional[str] = None,
+    period: str = "ALL",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """
+    Returns permanent, append-only master trade and prediction audit records.
+    Never cleared when session blotters are reset.
+    """
+    return master_audit_store.get_audit_records(
+        symbol=symbol,
+        model=model,
+        result=result,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@router.get("/export-master-audit-csv")
+async def export_master_audit_csv():
+    """
+    Downloads the entire Master Trade & Prediction Audit Journal as a CSV spreadsheet.
+    Compatible with Microsoft Excel, Google Sheets, and Apple Numbers.
+    """
+    csv_content = master_audit_store.get_csv_export_string()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="AutoBots_Master_Trade_Prediction_Audit.csv"',
+            "Cache-Control": "no-cache",
+        },
+    )
