@@ -42,6 +42,7 @@ import { MultiAssetDashboard } from "./components/MultiAssetDashboard";
 import { MasterTradeAuditSheet } from "./components/MasterTradeAuditSheet";
 import { MultiStrategyLab } from "./components/MultiStrategyLab";
 import { OrderBlockTerminal } from "./components/OrderBlockTerminal";
+import { TradingAcademyModal } from "./components/TradingAcademyModal";
 import {
   TrendingUp,
   RefreshCw,
@@ -69,12 +70,15 @@ import {
   Download,
   Play,
   Square,
+  BookOpen,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
   const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
+  const [terminalMode, setTerminalMode] = useState<"simplified" | "pro">("simplified");
+  const [showAcademyModal, setShowAcademyModal] = useState<boolean>(false);
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -818,6 +822,25 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {/* Academy Guide Button */}
+          <button
+            className="btn btn-primary"
+            style={{
+              fontSize: "12px",
+              padding: "6px 12px",
+              background: "linear-gradient(135deg, #4f46e5, #7c3aed)",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onClick={() => setShowAcademyModal(true)}
+            title="Open Interactive Guide & Academy"
+          >
+            <BookOpen size={14} />
+            <span>🎓 How It Works (Academy)</span>
+          </button>
+
           <button className="btn btn-outline" onClick={loadMarketData} disabled={loading} title="Manual Reload">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Reload
           </button>
@@ -853,17 +876,49 @@ export const App: React.FC = () => {
             </button>
           </div>
 
+          {/* Market Timing Status for Selected Asset */}
+          <div
+            className="hud-chip"
+            style={{
+              borderColor: botStatus?.is_market_open !== false ? "rgba(16, 185, 129, 0.4)" : "rgba(245, 158, 11, 0.4)",
+              background: botStatus?.is_market_open !== false ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.08)",
+            }}
+          >
+            <Clock size={12} color={botStatus?.is_market_open !== false ? "#10b981" : "#f59e0b"} />
+            <span>
+              <strong>{selectedSymbol}:</strong>{" "}
+              <span style={{ color: botStatus?.is_market_open !== false ? "#34d399" : "#fbbf24" }}>
+                {botStatus?.market_session_status || "Checking..."}
+              </span>
+            </span>
+            {botStatus?.is_market_open === false && (
+              <button
+                className="btn btn-outline btn-sm"
+                style={{
+                  fontSize: "9px",
+                  padding: "1px 6px",
+                  borderColor: "rgba(245, 158, 11, 0.5)",
+                  color: "#fde68a",
+                }}
+                onClick={() => setSelectedSymbol("BTC/USD")}
+                title="Switch to 24/7 Global Crypto Feed"
+              >
+                Switch to 24/7 (BTC)
+              </button>
+            )}
+          </div>
+
           <div className="hud-chip">
             <Zap size={12} color="#f59e0b" />
             <span>
-              <strong>6 Parallel Quant Strategies:</strong> Scalp (90s) • Bollinger (180s) • Breakout (360s) • 100% Directional • GBDT • Swing (1h)
+              <strong>6 Strategies:</strong> Scalp (90s) • Bollinger (180s) • Breakout (360s) • Consensus • GBDT • Swing
             </span>
           </div>
 
           <div className="hud-chip">
             <Shield size={12} color="#10b981" />
             <span>
-              <strong>Auto-Exit Protection:</strong> Dynamic TP/SL + Automatic Horizon Expiration (No Frozen Trades)
+              <strong>Auto-Exit:</strong> TP / SL + Horizon Expiration (No Frozen Trades)
             </span>
           </div>
         </div>
@@ -1232,7 +1287,72 @@ export const App: React.FC = () => {
             />
           </div>
 
-          {/* Module Tabs Navigation */}
+          {/* Module Tabs Navigation with Simplified / Pro Toggle */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Workspace View:
+              </span>
+              <div style={{ display: "inline-flex", background: "rgba(0, 0, 0, 0.4)", borderRadius: "6px", padding: "2px", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                <button
+                  onClick={() => setTerminalMode("simplified")}
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: "4px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: terminalMode === "simplified" ? "var(--accent-primary)" : "transparent",
+                    color: terminalMode === "simplified" ? "#fff" : "var(--text-muted)",
+                    transition: "all 0.15s ease",
+                  }}
+                  title="Streamlined beginner-friendly workspace with essential auto-trading modules"
+                >
+                  ⚡ Simplified (Learn & Trade)
+                </button>
+                <button
+                  onClick={() => setTerminalMode("pro")}
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: "4px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: terminalMode === "pro" ? "var(--accent-primary)" : "transparent",
+                    color: terminalMode === "pro" ? "#fff" : "var(--text-muted)",
+                    transition: "all 0.15s ease",
+                  }}
+                  title="Advanced view with all 10 specialized quantitative labs"
+                >
+                  🛠️ Pro Quant (All 10 Labs)
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAcademyModal(true)}
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#818cf8",
+                background: "rgba(99, 102, 241, 0.12)",
+                border: "1px solid rgba(99, 102, 241, 0.35)",
+                padding: "4px 12px",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+              }}
+            >
+              <BookOpen size={13} />
+              <span>🎓 How AutoBots Works (Academy)</span>
+            </button>
+          </div>
+
           <div className="tabs-nav">
             <button
               className={`tab-btn ${activeTab === "multibot" ? "active" : ""}`}
@@ -1251,11 +1371,11 @@ export const App: React.FC = () => {
               </div>
             </button>
             <button
-              className={`tab-btn ${activeTab === "order_block" ? "active" : ""}`}
-              onClick={() => setActiveTab("order_block")}
+              className={`tab-btn ${activeTab === "portfolio" ? "active" : ""}`}
+              onClick={() => setActiveTab("portfolio")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Layers size={14} color="#818cf8" /> 📦 Order Blocks & SMC (Order-Block.com Terminal)
+                <Wallet size={14} /> Paper Portfolio & Blotter ({positions.filter((p) => p.status === "OPEN").length})
               </div>
             </button>
             <button
@@ -1266,55 +1386,61 @@ export const App: React.FC = () => {
                 <FileSpreadsheet size={14} color="#10b981" /> 📋 Master Audit Sheet (Excel/CSV)
               </div>
             </button>
-            <button
-              className={`tab-btn ${activeTab === "portfolio" ? "active" : ""}`}
-              onClick={() => setActiveTab("portfolio")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Wallet size={14} /> Paper Portfolio & Blotter ({positions.filter((p) => p.status === "OPEN").length})
-              </div>
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "ledger" ? "active" : ""}`}
-              onClick={() => setActiveTab("ledger")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Award size={14} color="#10b981" /> ⚡ Trade Ledger & Period Profit
-              </div>
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "models" ? "active" : ""}`}
-              onClick={() => setActiveTab("models")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Layers size={14} color="var(--accent-primary)" /> Multi-Model Consensus
-              </div>
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "predictions" ? "active" : ""}`}
-              onClick={() => setActiveTab("predictions")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Sparkles size={14} color="var(--accent-primary)" />
-                AI Predictions ({predictionSummary?.total_predictions || predictionRecords.length})
-              </div>
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "replay" ? "active" : ""}`}
-              onClick={() => setActiveTab("replay")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <History size={14} /> Historical Replay Lab
-              </div>
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "accuracy" ? "active" : ""}`}
-              onClick={() => setActiveTab("accuracy")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Target size={14} /> Accuracy Dashboard
-              </div>
-            </button>
+
+            {/* Pro Quant Tabs: Hidden in Simplified View */}
+            {terminalMode === "pro" && (
+              <>
+                <button
+                  className={`tab-btn ${activeTab === "order_block" ? "active" : ""}`}
+                  onClick={() => setActiveTab("order_block")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Layers size={14} color="#818cf8" /> 📦 Order Blocks & SMC (Order-Block.com)
+                  </div>
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === "ledger" ? "active" : ""}`}
+                  onClick={() => setActiveTab("ledger")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Award size={14} color="#10b981" /> ⚡ Trade Ledger & Period Profit
+                  </div>
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === "models" ? "active" : ""}`}
+                  onClick={() => setActiveTab("models")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Layers size={14} color="var(--accent-primary)" /> Multi-Model Consensus
+                  </div>
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === "predictions" ? "active" : ""}`}
+                  onClick={() => setActiveTab("predictions")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Sparkles size={14} color="var(--accent-primary)" />
+                    AI Predictions ({predictionSummary?.total_predictions || predictionRecords.length})
+                  </div>
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === "replay" ? "active" : ""}`}
+                  onClick={() => setActiveTab("replay")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <History size={14} /> Historical Replay Lab
+                  </div>
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === "accuracy" ? "active" : ""}`}
+                  onClick={() => setActiveTab("accuracy")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Target size={14} /> Accuracy Dashboard
+                  </div>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Tab Views */}
@@ -1609,6 +1735,18 @@ export const App: React.FC = () => {
           />
         </aside>
       </main>
+
+      {/* Interactive Academy & Learning Guide Modal */}
+      <TradingAcademyModal
+        isOpen={showAcademyModal}
+        onClose={() => setShowAcademyModal(false)}
+        onNavigateTab={(tab) => {
+          setActiveTab(tab as any);
+          if (["order_block", "ledger", "models", "predictions", "replay", "accuracy"].includes(tab)) {
+            setTerminalMode("pro");
+          }
+        }}
+      />
     </div>
   );
 };

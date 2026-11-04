@@ -777,3 +777,4 @@ export const OrderBlockTerminal: React.FC<OrderBlockTerminalProps> = ({
     </div>
   );
 };
+

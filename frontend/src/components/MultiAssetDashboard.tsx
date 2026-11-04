@@ -108,15 +108,20 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
 
   const categoryOptions = [
     { label: "All Assets", value: "ALL" },
-    { label: "Indices", value: "INDEX" },
+    { label: "🟢 Live Now (24/7 & Open)", value: "LIVE_NOW" },
+    { label: "🔴 Closed / Standby (NSE)", value: "MARKET_CLOSED" },
+    { label: "Indices (NSE)", value: "INDEX" },
     { label: "Commodities", value: "COMMODITY" },
-    { label: "Currencies", value: "FOREX" },
-    { label: "Equities", value: "EQUITY" },
+    { label: "Forex Currencies", value: "FOREX" },
+    { label: "Crypto (24/7)", value: "CRYPTO" },
   ];
 
   const filteredAssets = data?.assets?.filter((asset) => {
     if (categoryFilter === "ALL") return true;
+    if (categoryFilter === "LIVE_NOW") return asset.is_market_open !== false;
+    if (categoryFilter === "MARKET_CLOSED") return asset.is_market_open === false;
     if (categoryFilter === "FOREX" && (asset.category === "FOREX" || asset.category === "FX")) return true;
+    if (categoryFilter === "CRYPTO" && (asset.category === "CRYPTO" || asset.symbol.includes("BTC") || asset.symbol.includes("ETH"))) return true;
     return asset.category === categoryFilter;
   }) || [];
 
@@ -433,9 +438,41 @@ export const MultiAssetDashboard: React.FC<MultiAssetDashboardProps> = ({ onSele
                         >
                           {asset.category}
                         </span>
+
+                        {/* Live Market Session Pill */}
+                        <span
+                          style={{
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            background: asset.is_market_open !== false ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                            color: asset.is_market_open !== false ? "#34d399" : "#f87171",
+                            border: `1px solid ${asset.is_market_open !== false ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)"}`,
+                          }}
+                          title={asset.market_session_status || (asset.is_market_open !== false ? "Market Open" : "Market Closed")}
+                        >
+                          <span
+                            style={{
+                              width: 5,
+                              height: 5,
+                              borderRadius: "50%",
+                              background: asset.is_market_open !== false ? "#10b981" : "#ef4444",
+                            }}
+                          />
+                          {asset.is_market_open !== false ? "LIVE" : "CLOSED"}
+                        </span>
                       </div>
-                      <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
-                        {asset.name}
+                      <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span>{asset.name}</span>
+                        {asset.is_market_open === false && (
+                          <span style={{ fontSize: "10px", color: "#f87171", fontWeight: 600 }}>
+                            {asset.market_session_status ? asset.market_session_status.split("(")[0].trim() : "NSE Closed"}
+                          </span>
+                        )}
                       </div>
                     </div>
 

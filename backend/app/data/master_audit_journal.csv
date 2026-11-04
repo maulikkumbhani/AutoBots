@@ -1,1 +1,4 @@
 audit_id,timestamp_ist,symbol,asset_category,action,quantity,entry_price,predicted_target_price,stop_loss,exit_price,duration_seconds,realized_pnl,realized_return_pct,trade_result,prediction_model,prediction_signal,prediction_confidence_pct,prediction_outcome,exit_reason,mfe,mae,timestamp_utc
+AUD-20261104-0003,"04 Nov 2026, 16:35:36 IST",USD/INR,EQUITY,LONG,1000.0,104.15,104.96,103.89,103.78,120,-366.8,-0.35,LOSS,HIGH_VOLUME_SCALPER,LONG,75.0,SL_HIT,STOP_LOSS,1.7,-366.8,2026-11-04T11:05:36.392984+00:00
+AUD-20261104-0002,"04 Nov 2026, 16:35:36 IST",USD/INR,EQUITY,LONG,1000.0,104.17,104.98,103.91,103.78,120,-386.8,-0.37,LOSS,HIGH_VOLUME_SCALPER,LONG,75.0,SL_HIT,STOP_LOSS,0.0,-386.8,2026-11-04T11:05:36.224050+00:00
+AUD-20261104-0001,"04 Nov 2026, 16:35:36 IST",USD/INR,EQUITY,LONG,1000.0,104.03,104.84,103.89,103.78,120,-246.8,-0.24,LOSS,HIGH_VOLUME_SCALPER,LONG,75.0,SL_HIT,STOP_LOSS,121.7,-246.8,2026-11-04T11:05:36.061786+00:00

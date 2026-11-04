@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import asyncio
 import logging
 import random
@@ -209,12 +209,15 @@ class AutoTradingBot:
         )
 
         cur_price = self.live_prices.get(self.symbol, 0.0)
+        is_cur_open, session_status = self.is_market_session_open(self.symbol)
 
         return {
             "is_active": self.is_active,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "current_price": cur_price,
+            "is_market_open": is_cur_open,
+            "market_session_status": session_status,
             "strategy_type": self.strategy_type,
             "execution_mode": self.execution_mode,
             "mt5_auto_trade": self.mt5_auto_trade,
@@ -233,6 +236,83 @@ class AutoTradingBot:
             "last_run_time": self.last_run_time,
             "recent_logs": self.cycle_logs[-15:],
         }
+
+    def is_market_session_open(self, sym: str) -> Tuple[bool, str]:
+        """
+        Calculates if the physical exchange for the given symbol is currently in an active trading session.
+        - Indian NSE/BSE (NIFTY 50, BANKNIFTY, Indian Equities):
+            Monday - Friday: 09:15 to 15:30 IST (03:45 to 10:00 UTC)
+            Weekends (Saturday, Sunday) & Holidays: Closed
+        - Global Forex (EUR/USD, GBP/USD, USD/INR, etc.):
+            24/5: Opens Sunday 21:00 UTC, Closes Friday 21:00 UTC
+        - Commodities (GOLD, SILVER, CRUDE OIL, XAUUSD):
+            Monday - Friday: 09:00 to 23:30 IST
+        - Crypto (BTC, ETH, etc.):
+            24/7/365: Always Active
+        """
+        now_utc = datetime.now(timezone.utc)
+        sym_upper = sym.upper()
+
+        # 1. Crypto is always open 24/7/365
+        if "BTC" in sym_upper or "ETH" in sym_upper or "SOL" in sym_upper or "CRYPTO" in sym_upper:
+            return True, "24/7 Global Crypto Feed Active"
+
+        # 2. Indian NSE / BSE Equities & Indices
+        is_indian = (
+            "NIFTY" in sym_upper
+            or "BANKNIFTY" in sym_upper
+            or "SENSEX" in sym_upper
+            or ".NS" in sym_upper
+            or "NSE" in sym_upper
+            or "BSE" in sym_upper
+            or sym_upper in ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
+        )
+
+        if is_indian:
+            # IST is UTC + 5:30
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+            ist_weekday = now_ist.weekday()  # 0 = Monday, 4 = Friday, 5 = Saturday, 6 = Sunday
+            ist_minutes = now_ist.hour * 60 + now_ist.minute
+
+            if ist_weekday >= 5:
+                return False, "NSE / BSE Closed (Weekend: Reopens Monday 09:15 IST)"
+
+            nse_open = 9 * 60 + 15   # 09:15 IST
+            nse_close = 15 * 60 + 30  # 15:30 IST
+
+            if nse_open <= ist_minutes <= nse_close:
+                return True, "NSE / BSE Live Session (09:15 - 15:30 IST)"
+            elif ist_minutes < nse_open:
+                return False, "NSE Pre-Market / Closed (Reopens Today at 09:15 IST)"
+            else:
+                return False, "NSE Post-Market / Closed (Reopens Next Session at 09:15 IST)"
+
+        # 3. Commodities (COMEX / MCX)
+        if "GOLD" in sym_upper or "SILVER" in sym_upper or "CRUDE" in sym_upper or "XAU" in sym_upper or "XAG" in sym_upper:
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+            if now_ist.weekday() >= 5:
+                return False, "Commodities Market Closed (Weekend)"
+            ist_minutes = now_ist.hour * 60 + now_ist.minute
+            if 540 <= ist_minutes <= 1410:  # 09:00 to 23:30 IST
+                return True, "COMEX / MCX Commodities Live (09:00 - 23:30 IST)"
+            else:
+                return False, "Commodities Closed (Reopens 09:00 IST)"
+
+        # 4. Global Forex (24/5)
+        if "/" in sym or "USD" in sym_upper or "EUR" in sym_upper or "GBP" in sym_upper:
+            utc_day = now_utc.weekday()
+            utc_hour = now_utc.hour
+
+            if utc_day == 5:
+                return False, "Forex Closed for Weekend (Reopens Sun 21:00 UTC)"
+            elif utc_day == 4 and utc_hour >= 21:
+                return False, "Forex Closed for Weekend (Reopens Sun 21:00 UTC)"
+            elif utc_day == 6 and utc_hour < 21:
+                return False, "Forex Closed (Reopens Sun 21:00 UTC / Mon 02:30 IST)"
+            else:
+                return True, "Forex 24/5 Live Session Active"
+
+        return True, "Session Active"
 
     def update_config(self, config: Dict[str, Any]):
         if "symbol" in config:
@@ -399,6 +479,7 @@ class AutoTradingBot:
         # 2. Live price tick generation: check live quote, otherwise realistic ATR intraday volatility
         precision = 4 if ("GBP" in sym or "EUR" in sym or "INR" in sym) else 2
         base_close = float(df.iloc[-1]["close"])
+        is_open, session_status = self.is_market_session_open(sym)
 
         try:
             live_quote = await self.yahoo_provider.fetch_latest_quote(sym)
@@ -406,15 +487,19 @@ class AutoTradingBot:
         except Exception:
             live_quote_p = 0.0
 
-        if live_quote_p > 0:
-            cur_price = round(live_quote_p, precision)
+        if not is_open:
+            # Physical exchange is closed: hold price steady at official close or last quote without artificial drift
+            cur_price = round(live_quote_p if live_quote_p > 0 else base_close, precision)
         else:
-            # Active realistic volatility drift anchored to ATR
-            recent_atr = float((df["high"].tail(14) - df["low"].tail(14)).mean()) if len(df) >= 14 else (base_close * 0.005)
-            atr_move = random.gauss(0, max(0.001 * base_close, recent_atr * 0.25))
-            prev_p = self.live_prices.get(sym, base_close)
-            reversion = -0.10 * ((prev_p - base_close) / base_close) * base_close
-            cur_price = round(prev_p + atr_move + reversion, precision)
+            if live_quote_p > 0:
+                cur_price = round(live_quote_p, precision)
+            else:
+                # Active realistic volatility drift anchored to ATR
+                recent_atr = float((df["high"].tail(14) - df["low"].tail(14)).mean()) if len(df) >= 14 else (base_close * 0.005)
+                atr_move = random.gauss(0, max(0.001 * base_close, recent_atr * 0.25))
+                prev_p = self.live_prices.get(sym, base_close)
+                reversion = -0.10 * ((prev_p - base_close) / base_close) * base_close
+                cur_price = round(prev_p + atr_move + reversion, precision)
 
         self.live_prices[sym] = cur_price
 
@@ -517,7 +602,20 @@ class AutoTradingBot:
                     "symbol": sym,
                 }
 
-        # 4. If bot is active, check if we should enter a new trade for this symbol
+        # 4. Check if physical exchange is open before evaluating new entries
+        if not is_open:
+            if cycle_action_log:
+                return cycle_action_log
+            return {
+                "time": cycle_timestamp,
+                "action": "STANDBY_MARKET_CLOSED",
+                "detail": f"{sym} Closed: {session_status}. Existing trades held, new entries paused until market opens.",
+                "cur_price": cur_price,
+                "closed_count": 0,
+                "symbol": sym,
+            }
+
+        # 5. If bot is active, check if we should enter a new trade for this symbol
         total_open = sum(1 for p in POSITIONS if p["status"] == "OPEN")
         if total_open < self.max_open_positions and len(open_positions) < self.max_positions_per_asset and self.is_active:
             df_with_live = df.copy()
@@ -719,12 +817,16 @@ class AutoTradingBot:
             total_losses += l_count
             total_pnl += pnl
 
+            is_open, session_status = self.is_market_session_open(sym)
+
             assets_data.append({
                 "symbol": sym,
                 "name": asset["name"],
                 "category": asset["category"],
                 "currency": asset["currency"],
                 "enabled": enabled,
+                "is_market_open": is_open,
+                "market_session_status": session_status,
                 "current_price": price,
                 "best_model": asset["best_model"],
                 "active_position": {
@@ -756,6 +858,8 @@ class AutoTradingBot:
             "overall_summary": {
                 "monitored_count": len(self.monitored_assets),
                 "enabled_count": sum(1 for a in assets_data if a["enabled"]),
+                "open_markets_count": sum(1 for a in assets_data if a.get("is_market_open", True)),
+                "closed_markets_count": sum(1 for a in assets_data if not a.get("is_market_open", True)),
                 "total_trades": overall_trades,
                 "win_count": total_wins,
                 "loss_count": total_losses,
@@ -1037,6 +1141,11 @@ class AutoTradingBot:
                                 p["unrealized_pnl"] = round(unrealized, 2)
                                 break
             else:
+                # If market for this asset is closed, do not enter new strategy trades
+                is_open, _ = self.is_market_session_open(sym)
+                if not is_open:
+                    continue
+
                 signal_dir, conf = self._evaluate_strategy_signal(s_id, sym, df, cur_price)
                 strat_state["last_signal"] = signal_dir
                 strat_state["last_confidence"] = conf

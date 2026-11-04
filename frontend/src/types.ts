@@ -156,6 +156,8 @@ export interface BotStatus {
   execution_mode?: "PAPER" | "MT5_LIVE";
   mt5_auto_trade?: boolean;
   mt5_status?: MT5BridgeStatus;
+  is_market_open?: boolean;
+  market_session_status?: string;
   quantity: number;
   take_profit_pct: number;
   stop_loss_pct: number;
@@ -439,4 +441,57 @@ export interface OrderBlockAnalysisResponse {
   liquidity_pools: LiquidityPoolsData;
   order_flow_imbalance: OrderFlowImbalanceData;
   market_structure: MarketStructureData;
+}
+
+export interface MultiAssetItem {
+  symbol: string;
+  name: string;
+  category: string;
+  currency: string;
+  enabled: boolean;
+  is_market_open?: boolean;
+  market_session_status?: string;
+  current_price: number;
+  best_model: string;
+  active_position?: {
+    id: number;
+    side: "BUY" | "SELL" | "LONG" | "SHORT";
+    quantity: number;
+    entry_price: number;
+    current_price: number;
+    unrealized_pnl: number;
+    stop_loss?: number;
+    take_profit?: number;
+  } | null;
+  total_trades: number;
+  win_count: number;
+  loss_count: number;
+  win_rate_pct: number;
+  net_pnl: number;
+  profit_factor: number;
+}
+
+export interface MultiAssetOverviewResponse {
+  is_bot_active: boolean;
+  execution_mode: string;
+  mt5_auto_trade: boolean;
+  period: string;
+  overall_summary: {
+    monitored_count: number;
+    enabled_count: number;
+    open_markets_count?: number;
+    closed_markets_count?: number;
+    total_trades: number;
+    win_count: number;
+    loss_count: number;
+    win_rate_pct: number;
+    net_pnl: number;
+  };
+  assets: MultiAssetItem[];
+  recent_logs: Array<{
+    time: string;
+    action: string;
+    detail: string;
+    cur_price?: number;
+  }>;
 }
