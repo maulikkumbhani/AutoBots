@@ -23,6 +23,7 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
   const [selectedModel, setSelectedModel] = useState<string>("ALL");
   const [selectedResult, setSelectedResult] = useState<string>("ALL");
   const [clearingStore, setClearingStore] = useState<boolean>(false);
+  const [displayLimit, setDisplayLimit] = useState<number>(20);
 
   const loadData = useCallback(async () => {
     try {
@@ -388,17 +389,42 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
         </div>
       )}
 
-      {/* Spreadsheet Table View */}
+      {/* Spreadsheet Table View with Limit Controls */}
       <div className="glass-card" style={{ padding: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
           <div>
             <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-main)", display: "flex", alignItems: "center", gap: "8px" }}>
               <FileSpreadsheet size={16} color="#10b981" />
-              <span>Master Execution & Prediction Log ({data?.records?.length || 0} Records)</span>
+              <span>
+                Master Execution & Prediction Log (Showing {displayLimit > 0 ? Math.min(displayLimit, data?.records?.length || 0) : data?.records?.length || 0} of {data?.records?.length || 0} Records)
+              </span>
             </h3>
             <p style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
               Full chronological audit trail with predicted targets vs actual fills. Click any stock to view live interactive chart.
             </p>
+          </div>
+
+          {/* Quick Page Size / Limit Controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Rows to show:</span>
+            {[10, 20, 50, 100, 0].map((lim) => (
+              <button
+                key={lim}
+                onClick={() => setDisplayLimit(lim)}
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 8px",
+                  borderRadius: "4px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: displayLimit === lim ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.05)",
+                  color: displayLimit === lim ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                {lim === 0 ? "All" : lim}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -440,7 +466,7 @@ export const MasterTradeAuditSheet: React.FC<MasterTradeAuditSheetProps> = ({ on
                     </td>
                   </tr>
                 ) : (
-                  data.records.map((rec: MasterAuditRecord) => {
+                  (displayLimit > 0 ? data.records.slice(0, displayLimit) : data.records).map((rec: MasterAuditRecord) => {
                     const isWin = rec.trade_result === "WIN" || rec.realized_pnl > 0;
                     const isTargetHit = rec.prediction_outcome === "TARGET_HIT" || rec.exit_reason === "TAKE_PROFIT";
 

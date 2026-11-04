@@ -879,3 +879,4 @@ export const TradingAcademyModal: React.FC<TradingAcademyModalProps> = ({
     </div>
   );
 };
+

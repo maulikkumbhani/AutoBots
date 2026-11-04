@@ -40,6 +40,7 @@ interface Props {
 export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY 50", onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const [strategy, setStrategy] = useState(botStatus?.strategy_type || "HIGH_VOLUME_SCALPER");
+  const [tradingScope, setTradingScope] = useState<"ACTIVE_ONLY" | "ALL_MONITORED">(botStatus?.trading_scope || "ACTIVE_ONLY");
   const [executionMode, setExecutionMode] = useState<"PAPER" | "MT5_LIVE">(botStatus?.execution_mode || "PAPER");
   const [mt5AutoTrade, setMt5AutoTrade] = useState<boolean>(botStatus?.mt5_auto_trade || false);
   const [tp, setTp] = useState(botStatus?.take_profit_pct || 0.8);
@@ -74,6 +75,22 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
     const interval = setInterval(pollMT5, 4000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (botStatus?.trading_scope) {
+      setTradingScope(botStatus.trading_scope);
+    }
+  }, [botStatus?.trading_scope]);
+
+  const handleUpdateScope = async (scope: "ACTIVE_ONLY" | "ALL_MONITORED") => {
+    setTradingScope(scope);
+    try {
+      await configureBot({ trading_scope: scope, symbol: activeSymbol });
+      onRefresh();
+    } catch (e) {
+      console.error("Failed to update trading scope:", e);
+    }
+  };
 
   const handleToggleBot = async () => {
     setLoading(true);
@@ -264,6 +281,52 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
         >
           ⚡ MT5 Live Execution
         </button>
+      </div>
+
+      {/* Bot Target Scope: Active Stock Only vs All Monitored */}
+      <div style={{ marginBottom: "12px", background: "rgba(10, 14, 22, 0.5)", padding: "8px 10px", borderRadius: "8px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px", display: "flex", justifyContent: "space-between" }}>
+          <span>Trading Target Scope:</span>
+          <span style={{ color: tradingScope === "ACTIVE_ONLY" ? "#34d399" : "#38bdf8", fontWeight: 800 }}>
+            {tradingScope === "ACTIVE_ONLY" ? "🎯 Focused: Single Stock" : "🌐 All 8 Stocks Scanner"}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button
+            onClick={() => handleUpdateScope("ACTIVE_ONLY")}
+            style={{
+              flex: 1,
+              padding: "5px 8px",
+              fontSize: "10px",
+              fontWeight: 700,
+              borderRadius: "5px",
+              cursor: "pointer",
+              background: tradingScope === "ACTIVE_ONLY" ? "rgba(16, 185, 129, 0.25)" : "rgba(255, 255, 255, 0.04)",
+              color: tradingScope === "ACTIVE_ONLY" ? "#34d399" : "var(--text-dim)",
+              border: tradingScope === "ACTIVE_ONLY" ? "1px solid rgba(16, 185, 129, 0.5)" : "1px solid transparent",
+            }}
+            title="Bot only evaluates and takes trades on the currently selected stock (reduces processing & saves volume)"
+          >
+            🎯 Active Stock ({activeSymbol})
+          </button>
+          <button
+            onClick={() => handleUpdateScope("ALL_MONITORED")}
+            style={{
+              flex: 1,
+              padding: "5px 8px",
+              fontSize: "10px",
+              fontWeight: 700,
+              borderRadius: "5px",
+              cursor: "pointer",
+              background: tradingScope === "ALL_MONITORED" ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.04)",
+              color: tradingScope === "ALL_MONITORED" ? "#818cf8" : "var(--text-dim)",
+              border: tradingScope === "ALL_MONITORED" ? "1px solid rgba(99, 102, 241, 0.5)" : "1px solid transparent",
+            }}
+            title="Bot continuously scans all 8 watchlist assets simultaneously"
+          >
+            🌐 All 8 Stocks Scanner
+          </button>
+        </div>
       </div>
 
       {/* MT5 Status Strip (When MT5 Mode is Active) */}

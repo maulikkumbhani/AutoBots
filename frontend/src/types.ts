@@ -153,6 +153,7 @@ export interface BotStatus {
   symbol: string;
   timeframe: string;
   strategy_type: string;
+  trading_scope?: "ACTIVE_ONLY" | "ALL_MONITORED";
   execution_mode?: "PAPER" | "MT5_LIVE";
   mt5_auto_trade?: boolean;
   mt5_status?: MT5BridgeStatus;

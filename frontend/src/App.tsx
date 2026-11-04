@@ -101,6 +101,7 @@ export const App: React.FC = () => {
     current_price: number;
   } | null>(null);
   const [selectedRecordFilter, setSelectedRecordFilter] = useState<"ALL" | "SUCCESS" | "FAILED" | "ACTIVE">("ALL");
+  const [predictionDisplayLimit, setPredictionDisplayLimit] = useState<number>(20);
 
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
@@ -484,14 +485,15 @@ export const App: React.FC = () => {
 
     if (!autoSync) return;
 
+    // Smooth, efficient 2000ms cadence to prevent UI stutter and browser CPU overload
     const tickInterval = setInterval(async () => {
       await syncLiveTick();
-    }, 800);
+    }, 2000);
 
     const stateInterval = setInterval(async () => {
       await loadSystemState();
       await loadPredictionRecords(selectedSymbol);
-    }, 3000);
+    }, 4500);
 
     return () => {
       clearInterval(tickInterval);
@@ -1520,17 +1522,40 @@ export const App: React.FC = () => {
                     <Sparkles size={16} color="var(--accent-primary)" />
                     <span>Predictive Trade Records & Outcome Ledger: {selectedSymbol}</span>
                   </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    {(["ALL", "SUCCESS", "FAILED", "ACTIVE"] as const).map((filter) => (
-                      <button
-                        key={filter}
-                        className={`timeline-btn ${selectedRecordFilter === filter ? "active" : ""}`}
-                        style={{ padding: "3px 8px", fontSize: "11px" }}
-                        onClick={() => setSelectedRecordFilter(filter)}
-                      >
-                        {filter}
-                      </button>
-                    ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      {(["ALL", "SUCCESS", "FAILED", "ACTIVE"] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          className={`timeline-btn ${selectedRecordFilter === filter ? "active" : ""}`}
+                          style={{ padding: "3px 8px", fontSize: "11px" }}
+                          onClick={() => setSelectedRecordFilter(filter)}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", borderLeft: "1px solid rgba(255, 255, 255, 0.1)", paddingLeft: "8px" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Rows:</span>
+                      {[10, 20, 50, 0].map((lim) => (
+                        <button
+                          key={lim}
+                          onClick={() => setPredictionDisplayLimit(lim)}
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            border: "none",
+                            cursor: "pointer",
+                            background: predictionDisplayLimit === lim ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.05)",
+                            color: predictionDisplayLimit === lim ? "#fff" : "var(--text-muted)",
+                          }}
+                        >
+                          {lim === 0 ? "All" : lim}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1579,15 +1604,16 @@ export const App: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {predictionRecords
-                        .filter((r) => {
+                      {(() => {
+                        const filtered = predictionRecords.filter((r) => {
                           if (selectedRecordFilter === "ALL") return true;
                           if (selectedRecordFilter === "SUCCESS") return r.is_correct === true;
                           if (selectedRecordFilter === "FAILED") return r.is_correct === false;
                           if (selectedRecordFilter === "ACTIVE") return r.evaluation_status === "ACTIVE";
                           return true;
-                        })
-                        .map((rec) => {
+                        });
+                        const sliced = predictionDisplayLimit > 0 ? filtered.slice(0, predictionDisplayLimit) : filtered;
+                        return sliced.map((rec) => {
                           const d = new Date(rec.cutoff_timestamp);
                           const istTime =
                             d.toLocaleTimeString("en-IN", {
@@ -1684,7 +1710,8 @@ export const App: React.FC = () => {
                               </td>
                             </tr>
                           );
-                        })}
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

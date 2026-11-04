@@ -37,6 +37,7 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [scalpExecuting, setScalpExecuting] = useState<boolean>(false);
   const [scalpMessage, setScalpMessage] = useState<string | null>(null);
+  const [tradeLimit, setTradeLimit] = useState<number>(20);
 
   const loadHistory = async () => {
     setLoading(true);
@@ -574,14 +575,32 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
 
       {/* Trade History Table */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "var(--text-muted)" }}>
             <Clock size={13} color="#10b981" />
-            <span>Executed Trade Ledger ({trades.length} Records)</span>
+            <span>Executed Trade Ledger (Showing {tradeLimit > 0 ? Math.min(tradeLimit, trades.length) : trades.length} of {trades.length} Records)</span>
           </div>
-          <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-            Timestamps formatted in Indian Standard Time (IST)
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Rows:</span>
+            {[10, 20, 50, 0].map((lim) => (
+              <button
+                key={lim}
+                onClick={() => setTradeLimit(lim)}
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: tradeLimit === lim ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.05)",
+                  color: tradeLimit === lim ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                {lim === 0 ? "All" : lim}
+              </button>
+            ))}
+          </div>
         </div>
 
         {trades.length === 0 ? (
@@ -620,7 +639,7 @@ export const TradeAnalyticsLedger: React.FC<TradeAnalyticsLedgerProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {trades.map((t) => (
+                {(tradeLimit > 0 ? trades.slice(0, tradeLimit) : trades).map((t) => (
                   <tr key={t.id}>
                     <td style={{ color: "var(--text-muted)", fontSize: "11px" }}>
                       {formatIST(t.closed_at)}

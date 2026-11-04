@@ -12,6 +12,7 @@ interface Props {
 export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefresh }) => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [closedLimit, setClosedLimit] = useState<number>(10);
 
   const openPositions = positions.filter((p) => p.status === "OPEN");
   const closedPositions = positions.filter((p) => p.status === "CLOSED");
@@ -264,13 +265,36 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
         )}
       </div>
 
-      {/* Closed Positions Ledger */}
+      {/* Closed Positions Ledger with Limit Selector */}
       <div>
-        <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: "8px" }}>
-          Closed Trades History ({closedPositions.length})
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase" }}>
+            Closed Trades History ({closedPositions.length})
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Show:</span>
+            {[10, 20, 50, 0].map((lim) => (
+              <button
+                key={lim}
+                onClick={() => setClosedLimit(lim)}
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: closedLimit === lim ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.05)",
+                  color: closedLimit === lim ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                {lim === 0 ? "All" : `Last ${lim}`}
+              </button>
+            ))}
+          </div>
         </div>
         {closedPositions.length > 0 ? (
-          <div style={{ overflowX: "auto", maxHeight: "200px" }}>
+          <div style={{ overflowX: "auto", maxHeight: "240px" }}>
             <table className="terminal-table">
               <thead>
                 <tr>
@@ -283,7 +307,7 @@ export const PortfolioBlotter: React.FC<Props> = ({ portfolio, positions, onRefr
                 </tr>
               </thead>
               <tbody>
-                {closedPositions.slice().reverse().map((pos) => (
+                {(closedLimit > 0 ? closedPositions.slice(-closedLimit) : closedPositions).slice().reverse().map((pos) => (
                   <tr key={pos.id}>
                     <td style={{ fontWeight: 700 }}>
                       <div>{pos.symbol}</div>

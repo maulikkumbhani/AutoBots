@@ -40,16 +40,17 @@ class AutoTradingBot:
         self.symbol = "NIFTY 50"
         self.timeframe = "15m"
         self.strategy_type = "HIGH_VOLUME_SCALPER"  # Default to high-volume micro scalper
+        self.trading_scope = "ACTIVE_ONLY"  # "ACTIVE_ONLY" (trade only user's active stock) or "ALL_MONITORED"
         self.execution_mode = "PAPER"    # "PAPER" or "MT5_LIVE"
         self.mt5_auto_trade = False      # Automatically forward signals to MT5
         self.mt4_auto_trade = False      # Automatically forward signals to OctaFX MT4
-        self.quantity = 50.0
+        self.quantity = 1.0              # Realistic retail position sizing (1 unit per trade)
         self.take_profit_pct = 0.8       # 0.8% target for responsive intraday profit realization
         self.stop_loss_pct = 0.4         # 0.4% stop loss (2:1 Reward:Risk)
         self.trailing_stop_pct = 0.25    # 0.25% trailing stop
         self.min_confidence = 0.40       # Minimum directional probability to trade
-        self.max_open_positions = 50     # Maximum total concurrent portfolio positions (multi-strategy)
-        self.max_positions_per_asset = 10 # Allow multiple concurrent strategies on the exact same asset
+        self.max_open_positions = 5      # Maximum total concurrent portfolio positions (protects capital from wild swings)
+        self.max_positions_per_asset = 2 # Max 2 concurrent positions per asset (prevents overexposure)
 
         # 6 Algorithmic Multi-Strategies for Simultaneous Parallel Execution on Every Asset
         self.strategies_def = [
@@ -131,16 +132,16 @@ class AutoTradingBot:
         # Multi-strategy state store: (symbol, strategy_id) -> metrics & live positions
         self.multi_strategy_store: Dict[str, Dict[str, Any]] = self._init_multi_strategy_store()
 
-        # Watchlist of multiple simultaneous assets for server daemon execution
+        # Watchlist of multiple simultaneous assets for server daemon execution (with realistic retail trade sizes)
         self.monitored_assets: List[Dict[str, Any]] = [
-            {"symbol": "NIFTY 50", "name": "Nifty 50 Index", "category": "INDEX", "default_qty": 50.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
-            {"symbol": "BANKNIFTY", "name": "Bank Nifty Index", "category": "INDEX", "default_qty": 25.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
-            {"symbol": "GOLD", "name": "Gold Spot / Futures (XAUUSD)", "category": "COMMODITY", "default_qty": 2.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
-            {"symbol": "SILVER", "name": "Silver Futures (XAGUSD)", "category": "COMMODITY", "default_qty": 10.0, "best_model": "STATISTICAL", "currency": "USD"},
-            {"symbol": "USD/INR", "name": "USD to Indian Rupee", "category": "FOREX", "default_qty": 1000.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
-            {"symbol": "RELIANCE", "name": "Reliance Industries", "category": "EQUITY", "default_qty": 25.0, "best_model": "ENSEMBLE", "currency": "INR"},
-            {"symbol": "TCS", "name": "Tata Consultancy Services", "category": "EQUITY", "default_qty": 15.0, "best_model": "ENSEMBLE", "currency": "INR"},
-            {"symbol": "CRUDE OIL", "name": "WTI Crude Oil", "category": "COMMODITY", "default_qty": 20.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+            {"symbol": "NIFTY 50", "name": "Nifty 50 Index", "category": "INDEX", "default_qty": 1.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "BANKNIFTY", "name": "Bank Nifty Index", "category": "INDEX", "default_qty": 1.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "GOLD", "name": "Gold Spot / Futures (XAUUSD)", "category": "COMMODITY", "default_qty": 0.05, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+            {"symbol": "SILVER", "name": "Silver Futures (XAGUSD)", "category": "COMMODITY", "default_qty": 1.0, "best_model": "STATISTICAL", "currency": "USD"},
+            {"symbol": "USD/INR", "name": "USD to Indian Rupee", "category": "FOREX", "default_qty": 50.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
+            {"symbol": "RELIANCE", "name": "Reliance Industries", "category": "EQUITY", "default_qty": 2.0, "best_model": "ENSEMBLE", "currency": "INR"},
+            {"symbol": "TCS", "name": "Tata Consultancy Services", "category": "EQUITY", "default_qty": 1.0, "best_model": "ENSEMBLE", "currency": "INR"},
+            {"symbol": "CRUDE OIL", "name": "WTI Crude Oil", "category": "COMMODITY", "default_qty": 1.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
         ]
         self.enabled_assets: Dict[str, bool] = {a["symbol"]: True for a in self.monitored_assets}
 
@@ -219,6 +220,7 @@ class AutoTradingBot:
             "is_market_open": is_cur_open,
             "market_session_status": session_status,
             "strategy_type": self.strategy_type,
+            "trading_scope": self.trading_scope,
             "execution_mode": self.execution_mode,
             "mt5_auto_trade": self.mt5_auto_trade,
             "mt5_status": mt5_bridge.get_status(),
@@ -317,6 +319,8 @@ class AutoTradingBot:
     def update_config(self, config: Dict[str, Any]):
         if "symbol" in config:
             self.symbol = config["symbol"]
+        if "trading_scope" in config:
+            self.trading_scope = str(config["trading_scope"])
         if "strategy_type" in config:
             self.strategy_type = config["strategy_type"]
         if "execution_mode" in config:
@@ -576,7 +580,7 @@ class AutoTradingBot:
                 )
                 master_audit_store.record_audit_trade(
                     symbol=pos["symbol"],
-                    asset_category=asset_cfg.get("category", "INDEX"),
+                    asset_category=asset.get("category", "INDEX"),
                     action=pos["side"],
                     quantity=pos["quantity"],
                     entry_price=pos["entry_price"],
@@ -632,6 +636,10 @@ class AutoTradingBot:
             direction = pred["direction"]
 
             if direction == "up" and p_up >= self.min_confidence:
+                cost = cur_price * qty
+                if PORTFOLIO_STATE["current_cash"] < cost:
+                    return cycle_action_log
+
                 sl_price = round(cur_price * (1.0 - self.stop_loss_pct / 100.0), precision)
                 tp_price = round(cur_price * (1.0 + self.take_profit_pct / 100.0), precision)
                 order_id = len(ORDERS_LOG) + 1
@@ -734,7 +742,7 @@ class AutoTradingBot:
         # Always run all 6 parallel quantitative strategies for continuous testing on this asset
         await self._process_multi_strategy_for_asset(
             sym=sym,
-            asset_cfg=asset_cfg,
+            asset_cfg=asset,
             cur_price=cur_price,
             active_candle=active_candle,
             df=df,
@@ -755,10 +763,16 @@ class AutoTradingBot:
         cycle_timestamp = self.last_run_time.strftime("%H:%M:%S UTC")
 
         executed_actions = []
-        for asset in self.monitored_assets:
+        if self.trading_scope == "ACTIVE_ONLY":
+            # Focused mode: Only evaluate the specific active symbol selected by the user!
+            target_assets = [a for a in self.monitored_assets if a["symbol"] == self.symbol]
+            if not target_assets:
+                target_assets = [{"symbol": self.symbol, "name": self.symbol, "category": "INDEX", "default_qty": 1.0, "currency": "INR"}]
+        else:
+            target_assets = [a for a in self.monitored_assets if self.enabled_assets.get(a["symbol"], True)]
+
+        for asset in target_assets:
             sym = asset["symbol"]
-            if not self.enabled_assets.get(sym, True):
-                continue
             try:
                 res = await self._process_single_asset(asset, cycle_timestamp)
                 if res:
@@ -772,10 +786,15 @@ class AutoTradingBot:
         if executed_actions:
             main_log = executed_actions[0]
         else:
+            detail_msg = (
+                f"Focused Bot: Monitoring active symbol {self.symbol}. Open: {open_count}/{self.max_open_positions}"
+                if self.trading_scope == "ACTIVE_ONLY"
+                else f"Multi-Stock Bot: Scanning all {len(self.monitored_assets)} stocks. Open: {open_count}/{self.max_open_positions}"
+            )
             main_log = {
                 "time": cycle_timestamp,
                 "action": "MONITORING",
-                "detail": f"Server daemon actively scanning {len(self.monitored_assets)} stocks. Open: {open_count}/{self.max_open_positions}",
+                "detail": detail_msg,
                 "cur_price": active_price,
                 "closed_count": 0,
             }
@@ -1151,13 +1170,21 @@ class AutoTradingBot:
                 strat_state["last_confidence"] = conf
 
                 if signal_dir in ("BUY", "SELL") and conf >= 0.65:
+                    qty_mult = s_def.get("qty_multiplier", 1.0)
+                    strat_qty = round(qty * qty_mult, 2 if ("GOLD" in sym or "/" in sym) else 0)
+                    strat_qty = max(1.0 if ("NIFTY" in sym or "BANK" in sym or "TCS" in sym or "RELIANCE" in sym) else 0.01, strat_qty)
+                    cost = cur_price * strat_qty
+                    if PORTFOLIO_STATE["current_cash"] < cost:
+                        continue
+                    total_open = sum(1 for p in POSITIONS if p["status"] == "OPEN")
+                    if total_open >= self.max_open_positions:
+                        continue
+
                     tp_dist = cur_price * (s_def["tp_pct"] / 100.0)
                     sl_dist = cur_price * (s_def["sl_pct"] / 100.0)
                     tp_p = round(cur_price + tp_dist if signal_dir == "BUY" else cur_price - tp_dist, precision)
                     sl_p = round(cur_price - sl_dist if signal_dir == "BUY" else cur_price + sl_dist, precision)
 
-                    qty_mult = s_def.get("qty_multiplier", 1.0)
-                    strat_qty = round(qty * qty_mult, 2 if ("GOLD" in sym or "/" in sym) else 0)
                     strat_lots = round(mt4_bridge.default_lot_size * qty_mult, 2)
 
                     pos_id = len(POSITIONS) + 1
