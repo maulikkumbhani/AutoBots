@@ -15,6 +15,7 @@ from app.api.routes_paper_trading import router as paper_router
 from app.api.routes_bot import router as bot_router
 from app.api.routes_mt5 import router as mt5_router
 from app.api.routes_mt4 import router as mt4_router
+from app.api.routes_order_block import router as order_block_router
 
 
 @asynccontextmanager
@@ -61,6 +62,7 @@ app.include_router(paper_router, prefix=settings.API_V1_STR)
 app.include_router(bot_router, prefix=settings.API_V1_STR)
 app.include_router(mt5_router, prefix=settings.API_V1_STR)
 app.include_router(mt4_router, prefix=settings.API_V1_STR)
+app.include_router(order_block_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")

@@ -26,6 +26,9 @@ import {
   fetchPredictionRecords,
   executePaperOrder,
   getMasterAuditCSVExportUrl,
+  startBot,
+  stopBot,
+  closeAllPositions,
 } from "./api";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { AutoBotPanel } from "./components/AutoBotPanel";
@@ -38,6 +41,7 @@ import { TradeAnalyticsLedger } from "./components/TradeAnalyticsLedger";
 import { MultiAssetDashboard } from "./components/MultiAssetDashboard";
 import { MasterTradeAuditSheet } from "./components/MasterTradeAuditSheet";
 import { MultiStrategyLab } from "./components/MultiStrategyLab";
+import { OrderBlockTerminal } from "./components/OrderBlockTerminal";
 import {
   TrendingUp,
   RefreshCw,
@@ -63,12 +67,14 @@ import {
   Award,
   FileSpreadsheet,
   Download,
+  Play,
+  Square,
 } from "lucide-react";
 
 export const App: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
   const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
+  const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -97,6 +103,8 @@ export const App: React.FC = () => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [accuracyData, setAccuracyData] = useState<AccuracyDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isTogglingBot, setIsTogglingBot] = useState(false);
+  const [isClosingAll, setIsClosingAll] = useState(false);
 
   // Auto-Sync state
   const [autoSync, setAutoSync] = useState(true);
@@ -426,6 +434,37 @@ export const App: React.FC = () => {
       setAccuracyData(acc);
     } catch (err) {
       console.error("Error loading system state:", err);
+    }
+  };
+
+  const handleToggleBot = async () => {
+    setIsTogglingBot(true);
+    try {
+      if (botStatus?.is_running) {
+        await stopBot();
+      } else {
+        await startBot(selectedSymbol);
+      }
+      await loadSystemState();
+    } catch (err) {
+      console.error("Failed to toggle bot:", err);
+    } finally {
+      setIsTogglingBot(false);
+    }
+  };
+
+  const handleHudCloseAll = async () => {
+    const openCount = positions.filter((p) => p.status === "OPEN").length;
+    if (openCount === 0) return;
+    if (!window.confirm(`Close all ${openCount} active open trades immediately at market price?`)) return;
+    setIsClosingAll(true);
+    try {
+      await closeAllPositions();
+      await loadSystemState();
+    } catch (err) {
+      console.error("Failed to close all positions:", err);
+    } finally {
+      setIsClosingAll(false);
     }
   };
 
@@ -785,6 +824,92 @@ export const App: React.FC = () => {
         </div>
       </header>
 
+      {/* Bot Mission Control HUD Bar */}
+      <div className="bot-mission-control-hud">
+        <div className="hud-left">
+          <div className="hud-status-badge">
+            <div className={`hud-pulse ${botStatus?.is_running ? "active" : "inactive"}`} />
+            <span className="hud-label">24/7 AUTO ENGINE:</span>
+            <span className={`hud-val ${botStatus?.is_running ? "green" : "dim"}`}>
+              {botStatus?.is_running ? "RUNNING LIVE" : "STANDBY / PAUSED"}
+            </span>
+            <button
+              className={`hud-btn-toggle ${botStatus?.is_running ? "pause" : "start"}`}
+              onClick={handleToggleBot}
+              disabled={isTogglingBot}
+              title={botStatus?.is_running ? "Pause Bot Execution" : "Start 24/7 Server Bot"}
+            >
+              {isTogglingBot ? (
+                <RefreshCw size={11} className="animate-spin" />
+              ) : botStatus?.is_running ? (
+                <>
+                  <Square size={10} fill="currentColor" /> Pause
+                </>
+              ) : (
+                <>
+                  <Play size={10} fill="currentColor" /> Start
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="hud-chip">
+            <Zap size={12} color="#f59e0b" />
+            <span>
+              <strong>6 Parallel Quant Strategies:</strong> Scalp (90s) • Bollinger (180s) • Breakout (360s) • 100% Directional • GBDT • Swing (1h)
+            </span>
+          </div>
+
+          <div className="hud-chip">
+            <Shield size={12} color="#10b981" />
+            <span>
+              <strong>Auto-Exit Protection:</strong> Dynamic TP/SL + Automatic Horizon Expiration (No Frozen Trades)
+            </span>
+          </div>
+        </div>
+
+        <div className="hud-right">
+          <div className="hud-open-positions">
+            <span className="hud-positions-count">
+              Open Positions: <strong>{positions.filter((p) => p.status === "OPEN").length}</strong>
+            </span>
+            {positions.filter((p) => p.status === "OPEN").length > 0 && (
+              <button
+                className="hud-btn-close-all"
+                onClick={handleHudCloseAll}
+                disabled={isClosingAll}
+                title="Immediately liquidate all open positions across all instruments"
+              >
+                <XCircle size={12} className={isClosingAll ? "animate-spin" : ""} />
+                <span>Close All ({positions.filter((p) => p.status === "OPEN").length})</span>
+              </button>
+            )}
+          </div>
+
+          <div className="hud-chip">
+            <div
+              className="hud-bridge-dot"
+              style={{
+                background:
+                  botStatus?.mt5_status?.connected || botStatus?.mt4_status?.connected
+                    ? "var(--bullish-green)"
+                    : "#64748b",
+              }}
+            />
+            <span>
+              MT4/MT5:{" "}
+              <strong style={{ color: botStatus?.mt5_status?.connected ? "#34d399" : "#94a3b8" }}>
+                {botStatus?.mt5_status?.connected
+                  ? "MT5 Connected"
+                  : botStatus?.mt4_status?.connected
+                  ? "MT4 Connected"
+                  : "Bridge Ready (Port 8000)"}
+              </strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Main Workspace */}
       <main className="main-content">
         {/* Left Panel: Chart & Analysis Tabs */}
@@ -1122,7 +1247,15 @@ export const App: React.FC = () => {
               onClick={() => setActiveTab("strategy_lab")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Zap size={14} color="#f59e0b" /> ⚡ 5-Strategy Lab & MT4/MT5
+                <Zap size={14} color="#f59e0b" /> ⚡ 6-Strategy Lab & MT4/MT5
+              </div>
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "order_block" ? "active" : ""}`}
+              onClick={() => setActiveTab("order_block")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Layers size={14} color="#818cf8" /> 📦 Order Blocks & SMC (Order-Block.com Terminal)
               </div>
             </button>
             <button
@@ -1201,6 +1334,16 @@ export const App: React.FC = () => {
                 onSelectSymbol={(sym) => {
                   setSelectedSymbol(sym);
                 }}
+              />
+            )}
+
+            {activeTab === "order_block" && (
+              <OrderBlockTerminal
+                currentSymbol={selectedSymbol}
+                onSelectSymbol={(sym) => {
+                  setSelectedSymbol(sym);
+                }}
+                onTradeExecuted={loadSystemState}
               />
             )}
 

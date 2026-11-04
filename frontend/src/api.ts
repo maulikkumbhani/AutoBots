@@ -507,3 +507,9 @@ export async function clearMasterAuditStore(): Promise<any> {
   if (!res.ok) throw new Error("Failed to clear master audit store");
   return res.json();
 }
+
+export async function fetchOrderBlockAnalysis(symbol = "NIFTY 50", timeframe = "15m"): Promise<any> {
+  const res = await fetch(`${API_BASE}/order-block/analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
+  if (!res.ok) throw new Error(`Failed to fetch Order Block analysis for ${symbol}`);
+  return res.json();
+}

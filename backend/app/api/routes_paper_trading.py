@@ -237,6 +237,13 @@ async def close_all_positions():
             total_realized += pnl
             closed_count += 1
 
+            # Sync multi_strategy_store
+            for key, strat in trading_bot.multi_strategy_store.items():
+                act = strat.get("active_position")
+                if act and act.get("pos_id") == pos["id"]:
+                    strat["active_position"] = None
+                    strat["status"] = "SCANNING"
+
             ret_pct = round((pnl / cost) * 100.0, 2) if cost > 0 else 0.0
             trade_ledger.record_trade(
                 symbol=pos["symbol"],
@@ -316,6 +323,13 @@ async def close_single_position(position_id: int):
     cost = target["entry_price"] * target["quantity"]
     PORTFOLIO_STATE["current_cash"] += (cost + pnl if target["side"] == "LONG" else pnl)
     PORTFOLIO_STATE["realized_pnl"] += pnl
+
+    # Sync multi_strategy_store if matching pos_id
+    for key, strat in trading_bot.multi_strategy_store.items():
+        act = strat.get("active_position")
+        if act and act.get("pos_id") == position_id:
+            strat["active_position"] = None
+            strat["status"] = "SCANNING"
 
     # Persist to disk ledger
     ret_pct = round((pnl / (target["entry_price"] * target["quantity"])) * 100.0, 2) if target["entry_price"] * target["quantity"] > 0 else 0.0

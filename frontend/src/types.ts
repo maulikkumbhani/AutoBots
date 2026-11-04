@@ -341,3 +341,102 @@ export interface TradeHistoryResponse {
   strategy_breakdown: StrategyBreakdown[];
   trades: TradeRecord[];
 }
+
+export interface OrderBlockItem {
+  type: "BULLISH_ORDER_BLOCK" | "BEARISH_ORDER_BLOCK";
+  zone: "DEMAND" | "SUPPLY";
+  index: number;
+  top: number;
+  bottom: number;
+  equilibrium_50: number;
+  status: "MITIGATED" | "UNMITIGATED";
+  is_fresh: boolean;
+  strength_score: number;
+  volume_surge_x: number;
+  distance_pct: number;
+  age_bars: number;
+  timestamp: string;
+}
+
+export interface FairValueGapItem {
+  type: "BULLISH_FVG" | "BEARISH_FVG";
+  top: number;
+  bottom: number;
+  midpoint: number;
+  gap_size: number;
+  fill_pct: number;
+  status: "UNFILLED" | "PARTIAL" | "FILLED";
+  age_bars: number;
+}
+
+export interface LiquidityPoolsData {
+  buy_side_liquidity_bsl: number;
+  sell_side_liquidity_ssl: number;
+  distance_to_bsl_pct: number;
+  distance_to_ssl_pct: number;
+  active_sweep?: {
+    type: string;
+    message: string;
+    bias: "LONG" | "SHORT";
+  } | null;
+}
+
+export interface OrderFlowImbalanceData {
+  buyer_volume_pct: number;
+  seller_volume_pct: number;
+  dominant_party: "BUYERS" | "SELLERS" | "BALANCED";
+  cvd_trend: string;
+  order_flow_imbalance_ratio: number;
+  institutional_absorption_detected: boolean;
+}
+
+export interface MarketStructureData {
+  range_high: number;
+  range_low: number;
+  equilibrium_50: number;
+  pricing_zone: string;
+  is_discount_zone: boolean;
+  market_structure_regime: string;
+  structure_event: string;
+}
+
+export interface OrderBlockConfluenceData {
+  signal: "BUY" | "SELL" | "WAIT_FOR_RETEST";
+  confidence_pct: number;
+  reasoning: string;
+  entry_zone: {
+    min: number;
+    max: number;
+    optimal: number;
+  };
+  stop_loss: number;
+  take_profit: number;
+  risk_reward_ratio: string;
+  grade: string;
+}
+
+export interface OrderBlockAnalysisResponse {
+  symbol: string;
+  timeframe: string;
+  current_price: number;
+  timestamp: string;
+  confluence: OrderBlockConfluenceData;
+  order_blocks: {
+    bullish_order_blocks: OrderBlockItem[];
+    bearish_order_blocks: OrderBlockItem[];
+    active_demand_zone: OrderBlockItem | null;
+    active_supply_zone: OrderBlockItem | null;
+    total_unmitigated_demand: number;
+    total_unmitigated_supply: number;
+  };
+  fair_value_gaps: {
+    bullish_fvgs: FairValueGapItem[];
+    bearish_fvgs: FairValueGapItem[];
+    nearest_bullish_gap: FairValueGapItem | null;
+    nearest_bearish_gap: FairValueGapItem | null;
+    total_open_gaps: number;
+  };
+  liquidity_pools: LiquidityPoolsData;
+  order_flow_imbalance: OrderFlowImbalanceData;
+  market_structure: MarketStructureData;
+}

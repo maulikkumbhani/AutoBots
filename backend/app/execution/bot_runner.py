@@ -62,6 +62,7 @@ class AutoTradingBot:
                 "magic": 10101,
                 "qty_multiplier": 2.5,
                 "horizon": "15s - 60s",
+                "max_hold_seconds": 90,
                 "desc": "Aggressive institutional volume & VWAP scalp. Enters with 2.5x lot volume to capture quick profit spikes in seconds.",
             },
             {
@@ -74,6 +75,7 @@ class AutoTradingBot:
                 "magic": 10202,
                 "qty_multiplier": 1.0,
                 "horizon": "1h - 4h",
+                "max_hold_seconds": 3600,
                 "desc": "Multi-hour trend runner with dynamic trailing stop. Captures large market swings for maximum point expansion.",
             },
             {
@@ -85,6 +87,7 @@ class AutoTradingBot:
                 "magic": 10303,
                 "qty_multiplier": 1.5,
                 "horizon": "5m - 15m",
+                "max_hold_seconds": 600,
                 "desc": "Ultra-selective perfection engine. Enters only when Multi-Model Consensus, VWAP Order Flow, and MACD/RSI are 100% aligned.",
             },
             {
@@ -96,6 +99,7 @@ class AutoTradingBot:
                 "magic": 10404,
                 "qty_multiplier": 1.0,
                 "horizon": "15m",
+                "max_hold_seconds": 900,
                 "desc": "Processes order flow imbalance, momentum, and VWAP regression factors. Highly resistant to choppy noise.",
             },
             {
@@ -107,6 +111,7 @@ class AutoTradingBot:
                 "magic": 10505,
                 "qty_multiplier": 1.2,
                 "horizon": "5m - 30m",
+                "max_hold_seconds": 3600,
                 "desc": "Snipes liquidity sweeps above 20-period session High/Low with immediate volume acceleration.",
             },
             {
@@ -118,6 +123,7 @@ class AutoTradingBot:
                 "magic": 10606,
                 "qty_multiplier": 1.0,
                 "horizon": "1m - 5m",
+                "max_hold_seconds": 180,
                 "desc": "Counter-trend scalps when price pierces 2.5σ Bollinger Bands with RSI < 25 (oversold) or RSI > 75 (overbought).",
             },
         ]
@@ -149,6 +155,7 @@ class AutoTradingBot:
         self.live_prices: Dict[str, float] = {}
         self.live_candles: Dict[str, Dict[str, Any]] = {}
         self.live_cached_dfs: Dict[str, Any] = {}
+        self.live_cached_dfs_ts: Dict[str, datetime] = {}
 
         self.models = {
             "HIGH_VOLUME_SCALPER": HighVolumeMicroScalper(),
@@ -364,10 +371,14 @@ class AutoTradingBot:
         sym = asset["symbol"]
         qty = asset.get("default_qty", self.quantity)
         best_model = asset.get("best_model", "HIGH_VOLUME_SCALPER")
+        now_utc = datetime.now(timezone.utc)
 
-        # 1. Fetch or cache candles for this symbol
+        # 1. Fetch or cache candles with automatic TTL refresh (every 45s)
         df = self.live_cached_dfs.get(sym)
-        if df is None or len(df) < 10:
+        df_ts = self.live_cached_dfs_ts.get(sym)
+        need_refresh = (df is None or len(df) < 10 or df_ts is None or (now_utc - df_ts).total_seconds() > 45)
+
+        if need_refresh:
             try:
                 df = await self.yahoo_provider.fetch_historical_candles(
                     sym, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
@@ -380,20 +391,35 @@ class AutoTradingBot:
                     sym, self.timeframe, self.last_run_time - timedelta(days=15), self.last_run_time
                 )
             self.live_cached_dfs[sym] = df
+            self.live_cached_dfs_ts[sym] = now_utc
 
         if df is None or df.empty:
             return None
 
-        # 2. Live price tick generation strictly anchored to real close
-        base_close = float(df.iloc[-1]["close"])
-        spread_noise = random.uniform(-0.00025, 0.00025)
+        # 2. Live price tick generation: check live quote, otherwise realistic ATR intraday volatility
         precision = 4 if ("GBP" in sym or "EUR" in sym or "INR" in sym) else 2
-        cur_price = round(base_close * (1.0 + spread_noise), precision)
+        base_close = float(df.iloc[-1]["close"])
+
+        try:
+            live_quote = await self.yahoo_provider.fetch_latest_quote(sym)
+            live_quote_p = float(live_quote.get("price", 0.0) or 0.0)
+        except Exception:
+            live_quote_p = 0.0
+
+        if live_quote_p > 0:
+            cur_price = round(live_quote_p, precision)
+        else:
+            # Active realistic volatility drift anchored to ATR
+            recent_atr = float((df["high"].tail(14) - df["low"].tail(14)).mean()) if len(df) >= 14 else (base_close * 0.005)
+            atr_move = random.gauss(0, max(0.001 * base_close, recent_atr * 0.25))
+            prev_p = self.live_prices.get(sym, base_close)
+            reversion = -0.10 * ((prev_p - base_close) / base_close) * base_close
+            cur_price = round(prev_p + atr_move + reversion, precision)
+
         self.live_prices[sym] = cur_price
 
         # Update active candle
         active_candle = self.live_candles.get(sym)
-        now_utc = datetime.now(timezone.utc)
         if active_candle is None:
             active_candle = {
                 "timestamp": now_utc,
@@ -416,6 +442,28 @@ class AutoTradingBot:
         for pos in open_positions:
             updated_pos = self.exec_engine.update_position_candle(pos, active_candle)
             pos.update(updated_pos)
+
+            # Check maximum duration horizon expiration so trades never get stuck
+            if pos["status"] == "OPEN":
+                opened_at = pos.get("opened_at")
+                if opened_at:
+                    if isinstance(opened_at, str):
+                        try:
+                            opened_dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+                        except Exception:
+                            opened_dt = now_utc
+                    else:
+                        opened_dt = opened_at
+                    elapsed = (now_utc - opened_dt).total_seconds()
+                    max_dur = 120 if "SCALPER" in str(pos.get("strategy", "")).upper() else 600
+                    if elapsed >= max_dur:
+                        unrealized = pos.get("unrealized_pnl", 0.0)
+                        pos["status"] = "CLOSED"
+                        pos["closed_at"] = now_utc
+                        pos["close_reason"] = "HORIZON_PROFIT_LOCK" if unrealized > 0 else "TIME_EXPIRATION"
+                        pos["realized_pnl"] = unrealized
+                        pos["unrealized_pnl"] = 0.0
+
             if pos["status"] == "CLOSED":
                 pnl = pos["realized_pnl"]
                 PORTFOLIO_STATE["realized_pnl"] += pnl
@@ -900,8 +948,19 @@ class AutoTradingBot:
                 is_tp = (cur_price >= tp) if side == "BUY" else (cur_price <= tp)
                 is_sl = (cur_price <= sl) if side == "BUY" else (cur_price >= sl)
 
-                if is_tp or is_sl:
-                    close_reason = "TAKE_PROFIT" if is_tp else "STOP_LOSS"
+                max_hold = s_def.get("max_hold_seconds", 300)
+                dur = pos.get("duration_seconds", 0)
+                is_expired = dur >= max_hold
+
+                if is_tp or is_sl or is_expired:
+                    if is_tp:
+                        close_reason = "TAKE_PROFIT"
+                    elif is_sl:
+                        close_reason = "STOP_LOSS"
+                    else:
+                        unreal = (cur_price - entry) * pos["quantity"] if side == "BUY" else (entry - cur_price) * pos["quantity"]
+                        close_reason = "HORIZON_PROFIT_LOCK" if unreal > 0 else "TIME_EXPIRATION"
+
                     pnl = (cur_price - entry) * pos["quantity"] if side == "BUY" else (entry - cur_price) * pos["quantity"]
                     is_win = pnl > 0
                     strat_state["total_trades"] += 1

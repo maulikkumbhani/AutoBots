@@ -806,6 +806,24 @@ export const MultiStrategyLab: React.FC<MultiStrategyLabProps> = ({
               <span>Download MT4 EA (.mq4)</span>
             </a>
 
+            {/* Download MQL5 EA directly from static storage */}
+            <a
+              href="/AutoBot_MT5_Bridge.mq5"
+              download="AutoBot_MT5_Bridge.mq5"
+              className="btn btn-primary"
+              style={{
+                fontSize: "11px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+              }}
+              title="Download AutoBot_MT5_Bridge.mq5 file for MetaTrader 5"
+            >
+              <Download size={13} />
+              <span>Download MT5 EA (.mq5)</span>
+            </a>
+
             {/* View & Copy Source Code Button */}
             <button
               className="btn btn-outline"
