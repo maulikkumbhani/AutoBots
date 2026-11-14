@@ -122,15 +122,17 @@ void ParseAndExecuteSignals(string jsonStr)
 {
    if (StringFind(jsonStr, "\"signal_id\"") < 0) return;
 
-   // Simple lightweight JSON key extractor
+   // Resilient JSON object extractor
    int pos = 0;
-   while ((pos = StringFind(jsonStr, "{\"signal_id\":", pos)) >= 0)
+   while ((pos = StringFind(jsonStr, "{", pos)) >= 0)
    {
       int endPos = StringFind(jsonStr, "}", pos);
       if (endPos < 0) break;
 
       string objStr = StringSubstr(jsonStr, pos, endPos - pos + 1);
       pos = endPos + 1;
+
+      if (StringFind(objStr, "\"signal_id\"") < 0) continue;
 
       string signalId = ExtractJsonString(objStr, "signal_id");
       string symbol   = ExtractJsonString(objStr, "symbol");
@@ -142,7 +144,7 @@ void ParseAndExecuteSignals(string jsonStr)
       double magicNum = ExtractJsonDouble(objStr, "magic_number");
 
       if (lots <= 0.0) lots = InpDefaultLots;
-      if (symbol == "") symbol = _Symbol;
+      if (symbol == "") symbol = (_Symbol != "" ? _Symbol : "XAUUSD");
 
       // Isolate trades per strategy via magic number
       if (magicNum > 0) ExtTrade.SetExpertMagicNumber((ulong)magicNum);
@@ -214,10 +216,21 @@ void ReportExecution(string sigId, ulong ticket, string sym, string side, double
 //+------------------------------------------------------------------+
 string ExtractJsonString(string src, string key)
 {
-   string search = "\"" + key + "\":\"";
-   int start = StringFind(src, search);
-   if (start < 0) return "";
-   start += StringLen(search);
+   string search1 = "\"" + key + "\":\"";
+   string search2 = "\"" + key + "\": \"";
+   int start = StringFind(src, search1);
+   if (start >= 0)
+   {
+      start += StringLen(search1);
+   }
+   else
+   {
+      start = StringFind(src, search2);
+      if (start >= 0)
+         start += StringLen(search2);
+      else
+         return "";
+   }
    int end = StringFind(src, "\"", start);
    if (end < 0) return "";
    return StringSubstr(src, start, end - start);
@@ -225,12 +238,24 @@ string ExtractJsonString(string src, string key)
 
 double ExtractJsonDouble(string src, string key)
 {
-   string search = "\"" + key + "\":";
-   int start = StringFind(src, search);
-   if (start < 0) return 0.0;
-   start += StringLen(search);
+   string search2 = "\"" + key + "\": ";
+   string search1 = "\"" + key + "\":";
+   int start = StringFind(src, search2);
+   if (start >= 0)
+   {
+      start += StringLen(search2);
+   }
+   else
+   {
+      start = StringFind(src, search1);
+      if (start >= 0)
+         start += StringLen(search1);
+      else
+         return 0.0;
+   }
    int end = StringFind(src, ",", start);
-   if (end < 0) end = StringFind(src, "}", start);
+   int endBrace = StringFind(src, "}", start);
+   if (end < 0 || (endBrace >= 0 && endBrace < end)) end = endBrace;
    if (end < 0) return 0.0;
    string valStr = StringSubstr(src, start, end - start);
    StringTrimLeft(valStr);

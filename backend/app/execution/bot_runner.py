@@ -41,8 +41,8 @@ class AutoTradingBot:
         self.timeframe = "15m"
         self.strategy_type = "HIGH_VOLUME_SCALPER"  # Default to high-volume micro scalper
         self.trading_scope = "ACTIVE_ONLY"  # "ACTIVE_ONLY" (trade only user's active stock) or "ALL_MONITORED"
-        self.execution_mode = "PAPER"    # "PAPER" or "MT5_LIVE"
-        self.mt5_auto_trade = False      # Automatically forward signals to MT5
+        self.execution_mode = "MT5_LIVE" # "PAPER" or "MT5_LIVE"
+        self.mt5_auto_trade = True       # Automatically forward signals to MT5
         self.mt4_auto_trade = False      # Automatically forward signals to OctaFX MT4
         self.quantity = 1.0              # Realistic retail position sizing (1 unit per trade)
         self.take_profit_pct = 0.8       # 0.8% target for responsive intraday profit realization

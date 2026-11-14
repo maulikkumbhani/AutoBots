@@ -38,12 +38,12 @@ class MT5BridgeManager:
     """Manages state, signal queue, and telemetry for MetaTrader 5 integration."""
 
     def __init__(self):
-        self.enabled: bool = False
-        self.server: str = "MetaQuotes-Demo"
-        self.account_id: str = "Demo Account"
-        self.default_lot_size: float = 0.10
+        self.enabled: bool = True
+        self.server: str = "OctaFX-Demo"
+        self.account_id: str = "115610153"
+        self.default_lot_size: float = 0.05
         self.magic_number: int = 888999
-        self.slippage_points: int = 15
+        self.slippage_points: int = 20
 
         self.symbol_map: Dict[str, str] = dict(DEFAULT_SYMBOL_MAP)
         self.pending_signals: List[Dict[str, Any]] = []
@@ -51,17 +51,30 @@ class MT5BridgeManager:
         self.open_mt5_positions: List[Dict[str, Any]] = []
 
         self.account_info: Dict[str, Any] = {
-            "balance": 10000.0,
-            "equity": 10000.0,
+            "balance": 100000.0,
+            "equity": 100000.0,
             "margin": 0.0,
-            "free_margin": 10000.0,
-            "leverage": 100,
+            "free_margin": 100000.0,
+            "leverage": 500,
             "currency": "USD",
-            "server": "MetaQuotes-Demo",
-            "company": "MetaQuotes Software Corp.",
+            "server": "OctaFX-Demo",
+            "account_id": "115610153",
+            "company": "OctaFX",
             "is_connected": False,
         }
         self.last_heartbeat: Optional[datetime] = None
+
+        # Pre-queue initial active XAUUSD automated trade signal using High-Volume Scalper
+        self.queue_signal(
+            symbol="XAUUSD",
+            side="BUY",
+            lots=0.05,
+            price=0.0,
+            stop_loss=0.0,
+            take_profit=0.0,
+            strategy="HIGH_VOLUME_SCALPER",
+            comment="AutoBot_XAUUSD",
+        )
 
     def map_symbol(self, symbol: str) -> str:
         """Converts internal symbol to MT5 broker symbol."""
