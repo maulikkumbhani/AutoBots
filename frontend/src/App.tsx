@@ -29,6 +29,7 @@ import {
   startBot,
   stopBot,
   closeAllPositions,
+  getStoredApiUrl,
 } from "./api";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { AutoBotPanel } from "./components/AutoBotPanel";
@@ -43,6 +44,7 @@ import { MasterTradeAuditSheet } from "./components/MasterTradeAuditSheet";
 import { MultiStrategyLab } from "./components/MultiStrategyLab";
 import { OrderBlockTerminal } from "./components/OrderBlockTerminal";
 import { TradingAcademyModal } from "./components/TradingAcademyModal";
+import { ServerConnectionModal } from "./components/ServerConnectionModal";
 import {
   TrendingUp,
   RefreshCw,
@@ -79,6 +81,8 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
   const [terminalMode, setTerminalMode] = useState<"simplified" | "pro">("simplified");
   const [showAcademyModal, setShowAcademyModal] = useState<boolean>(false);
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(true);
+  const [showServerModal, setShowServerModal] = useState<boolean>(false);
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -277,6 +281,7 @@ export const App: React.FC = () => {
       setCandles(cData);
       setIndicators(indData);
       setTickerItems(tickers);
+      setIsBackendConnected(true);
 
       if (cData.length > 0) {
         lastPriceRef.current = cData[cData.length - 1].close;
@@ -289,6 +294,7 @@ export const App: React.FC = () => {
       await loadPredictionRecords(selectedSymbol);
     } catch (err) {
       console.error("Error loading market data:", err);
+      setIsBackendConnected(false);
     } finally {
       setLoading(false);
     }
@@ -437,8 +443,10 @@ export const App: React.FC = () => {
       setPortfolio(port);
       setPositions(pos);
       setAccuracyData(acc);
+      setIsBackendConnected(true);
     } catch (err) {
       console.error("Error loading system state:", err);
+      setIsBackendConnected(false);
     }
   };
 
@@ -619,6 +627,48 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
+      {/* Backend Offline Warning Banner */}
+      {!isBackendConnected && (
+        <div
+          style={{
+            background: "linear-gradient(90deg, #7f1d1d 0%, #450a0a 100%)",
+            borderBottom: "1px solid #ef4444",
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "8px",
+            fontSize: "12px",
+            color: "#fecaca",
+            zIndex: 1000,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 8px #ef4444" }} />
+            <span>
+              <strong>Backend Disconnected:</strong> Cannot connect to Python backend server at <code>{getStoredApiUrl()}</code>.
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              className="btn btn-sm btn-outline"
+              style={{ borderColor: "#fca5a5", color: "#fecaca", fontSize: "11px", padding: "2px 8px" }}
+              onClick={() => setShowServerModal(true)}
+            >
+              ⚙️ Fix Connection / Start Backend
+            </button>
+            <button
+              className="btn btn-sm btn-primary"
+              style={{ fontSize: "11px", padding: "2px 8px", background: "#ef4444", borderColor: "#dc2626" }}
+              onClick={loadMarketData}
+            >
+              🔄 Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <header className="top-navbar">
         <div className="brand-section">
@@ -841,6 +891,34 @@ export const App: React.FC = () => {
           >
             <BookOpen size={14} />
             <span>🎓 How It Works (Academy)</span>
+          </button>
+
+          {/* Server Connection Status Button */}
+          <button
+            className="btn btn-outline"
+            style={{
+              fontSize: "11px",
+              padding: "5px 10px",
+              borderColor: isBackendConnected ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.6)",
+              background: isBackendConnected ? "rgba(16, 185, 129, 0.08)" : "rgba(239, 68, 68, 0.15)",
+              color: isBackendConnected ? "var(--bullish-green)" : "#fca5a5",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onClick={() => setShowServerModal(true)}
+            title="Configure backend server connection"
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: isBackendConnected ? "#10b981" : "#ef4444",
+                boxShadow: isBackendConnected ? "0 0 6px #10b981" : "0 0 6px #ef4444",
+              }}
+            />
+            <span>{isBackendConnected ? "Server Online" : "Server Offline"}</span>
           </button>
 
           <button className="btn btn-outline" onClick={loadMarketData} disabled={loading} title="Manual Reload">
@@ -1772,6 +1850,16 @@ export const App: React.FC = () => {
           if (["order_block", "ledger", "models", "predictions", "replay", "accuracy"].includes(tab)) {
             setTerminalMode("pro");
           }
+        }}
+      />
+
+      {/* Backend Server Connection Settings Modal */}
+      <ServerConnectionModal
+        isOpen={showServerModal}
+        onClose={() => setShowServerModal(false)}
+        onConnectionChanged={() => {
+          loadMarketData();
+          loadSystemState();
         }}
       />
     </div>

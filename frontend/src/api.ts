@@ -11,7 +11,52 @@ import {
   InstrumentSummary,
 } from "./types";
 
-const API_BASE = "http://localhost:8000/api/v1";
+export const getApiBase = (): string => {
+  if (typeof window !== "undefined") {
+    const custom = localStorage.getItem("autobots_api_url");
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, "") + "/api/v1";
+    }
+  }
+  const envUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, "") + "/api/v1";
+  }
+  return "http://localhost:8000/api/v1";
+};
+
+export const getStoredApiUrl = (): string => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("autobots_api_url") || "http://localhost:8000";
+  }
+  return "http://localhost:8000";
+};
+
+export const setStoredApiUrl = (url: string) => {
+  if (typeof window !== "undefined") {
+    if (!url || !url.trim() || url.trim() === "http://localhost:8000") {
+      localStorage.removeItem("autobots_api_url");
+    } else {
+      localStorage.setItem("autobots_api_url", url.trim().replace(/\/api\/v1\/?$/, ""));
+    }
+  }
+};
+
+export async function checkBackendHealth(): Promise<{ ok: boolean; url: string; error?: string }> {
+  const base = getApiBase();
+  const rootUrl = base.replace(/\/api\/v1\/?$/, "");
+  try {
+    const res = await fetch(`${rootUrl}/docs`, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+    return { ok: res.status < 500, url: rootUrl };
+  } catch (err: any) {
+    return { ok: false, url: rootUrl, error: err?.message || "Connection refused" };
+  }
+}
+
+// Dynamic API_BASE object whose string interpolation always calls getApiBase()
+const API_BASE = {
+  toString: () => getApiBase(),
+};
 
 export async function fetchTickerStrip(): Promise<TickerItem[]> {
   const res = await fetch(`${API_BASE}/markets/ticker-strip`);
