@@ -1049,6 +1049,58 @@ export const App: React.FC = () => {
       <main className="main-content">
         {/* Left Panel: Chart & Analysis Tabs */}
         <section className="left-panel">
+          {/* Quick Interactive Chart Switcher Tabs */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              overflowX: "auto",
+              padding: "6px 10px",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.06)",
+              borderRadius: "8px",
+              marginBottom: "8px",
+            }}
+          >
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginRight: "4px", whiteSpace: "nowrap" }}>
+              Active Charts:
+            </span>
+            {[
+              { id: "NIFTY 50", label: "NIFTY 50", category: "INDEX" },
+              { id: "BANKNIFTY", label: "BANKNIFTY", category: "INDEX" },
+              { id: "GOLD", label: "GOLD (XAUUSD)", category: "COMMODITY" },
+              { id: "SILVER", label: "SILVER (XAGUSD)", category: "COMMODITY" },
+              { id: "EUR/USD", label: "EUR/USD", category: "FOREX" },
+              { id: "GBP/USD", label: "GBP/USD", category: "FOREX" },
+              { id: "BTC/USD", label: "BTC/USD", category: "CRYPTO" },
+              { id: "RELIANCE", label: "RELIANCE", category: "EQUITY" },
+              { id: "TCS", label: "TCS", category: "EQUITY" },
+            ].map((chartItem) => {
+              const isActive = selectedSymbol === chartItem.id;
+              return (
+                <button
+                  key={chartItem.id}
+                  onClick={() => handleSelectInstrument(chartItem.id)}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: "11px",
+                    fontWeight: isActive ? 700 : 500,
+                    borderRadius: "6px",
+                    background: isActive ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.04)",
+                    color: isActive ? "#ffffff" : "var(--text-dim)",
+                    border: isActive ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.08)",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {chartItem.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Chart Card */}
           <div className="glass-card" style={{ padding: "12px" }}>
             {/* Top Bar of Chart: Instrument, Live Price, Day Change & Exchange Clock */}
