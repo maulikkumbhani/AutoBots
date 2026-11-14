@@ -148,16 +148,18 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
     }
   };
 
-  const handleTestMT5Order = async (side: "BUY" | "SELL") => {
+  const handleTestMT5Order = async (side: "BUY" | "SELL", customSymbol?: string, customStrategy?: string) => {
+    const sym = customSymbol || activeSymbol;
+    const strat = customStrategy || strategy || "HIGH_VOLUME_SCALPER";
     try {
       const res = await sendManualMT5Order({
-        symbol: activeSymbol,
+        symbol: sym,
         side,
-        lots: Number(mt5Lots) || 0.1,
+        lots: Number(mt5Lots) || 0.05,
         price: botStatus?.current_price || 1.0,
-        strategy: "UI_TEST",
+        strategy: strat,
       });
-      setTestOrderSuccess(`⚡ Queued ${side} ${mt5Lots} lots on MT5 for ${activeSymbol}!`);
+      setTestOrderSuccess(`⚡ Queued ${side} ${mt5Lots || 0.05} lots on MT5 for ${sym} (${strat})!`);
       setTimeout(() => setTestOrderSuccess(null), 4000);
       pollMT5();
     } catch (e: any) {
@@ -388,39 +390,85 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
             </div>
           </div>
 
-          {/* Quick MT5 Test Execution */}
-          <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+          {/* Dedicated XAUUSD (Gold) Strategy Auto-Execution */}
+          <div style={{ marginTop: "10px", padding: "8px", background: "rgba(0, 0, 0, 0.25)", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b" }}>
+                🏆 XAUUSD (Gold) Strategy Execution
+              </span>
+              <span style={{ fontSize: "10px", color: "#9ca3af" }}>
+                Demo: <strong>115610153</strong>
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                onClick={() => handleTestMT5Order("BUY", "XAUUSD", "HIGH_VOLUME_SCALPER")}
+                style={{
+                  flex: 1,
+                  padding: "6px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: "rgba(16, 185, 129, 0.25)",
+                  border: "1px solid rgba(16, 185, 129, 0.5)",
+                  color: "#34d399",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                }}
+              >
+                ⚡ BUY XAUUSD (Scalper)
+              </button>
+              <button
+                onClick={() => handleTestMT5Order("SELL", "XAUUSD", "HIGH_VOLUME_SCALPER")}
+                style={{
+                  flex: 1,
+                  padding: "6px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: "rgba(244, 63, 94, 0.25)",
+                  border: "1px solid rgba(244, 63, 94, 0.5)",
+                  color: "#fb7185",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                }}
+              >
+                ⚡ SELL XAUUSD (Scalper)
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Active Asset MT5 Test Execution */}
+          <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
             <button
               onClick={() => handleTestMT5Order("BUY")}
               style={{
                 flex: 1,
-                padding: "5px 8px",
-                fontSize: "11px",
-                fontWeight: 700,
-                background: "rgba(16, 185, 129, 0.2)",
-                border: "1px solid rgba(16, 185, 129, 0.4)",
-                color: "#34d399",
-                borderRadius: "6px",
+                padding: "4px 6px",
+                fontSize: "10px",
+                fontWeight: 600,
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "var(--text-dim)",
+                borderRadius: "4px",
                 cursor: "pointer",
               }}
             >
-              Test MT5 BUY
+              Test BUY ({activeSymbol})
             </button>
             <button
               onClick={() => handleTestMT5Order("SELL")}
               style={{
                 flex: 1,
-                padding: "5px 8px",
-                fontSize: "11px",
-                fontWeight: 700,
-                background: "rgba(244, 63, 94, 0.2)",
-                border: "1px solid rgba(244, 63, 94, 0.4)",
-                color: "#fb7185",
-                borderRadius: "6px",
+                padding: "4px 6px",
+                fontSize: "10px",
+                fontWeight: 600,
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "var(--text-dim)",
+                borderRadius: "4px",
                 cursor: "pointer",
               }}
             >
-              Test MT5 SELL
+              Test SELL ({activeSymbol})
             </button>
           </div>
 
