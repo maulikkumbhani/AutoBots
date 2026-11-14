@@ -92,9 +92,9 @@ class MockDataProvider(BaseDataProvider):
             base_price = 158.15
         elif "INR" in sym_u or "USDINR" in sym_u:
             base_price = 94.93
-        elif "GC=F" in sym_u or "GOLD" in sym_u:
+        elif "GC=F" in sym_u or "GOLD" in sym_u or "XAU" in sym_u:
             base_price = 4130.0
-        elif "SI=F" in sym_u or "SILVER" in sym_u:
+        elif "SI=F" in sym_u or "SILVER" in sym_u or "XAG" in sym_u:
             base_price = 57.2
         elif "CL=F" in sym_u or "OIL" in sym_u:
             base_price = 100.7

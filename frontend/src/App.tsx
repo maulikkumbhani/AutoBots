@@ -30,6 +30,8 @@ import {
   stopBot,
   closeAllPositions,
   getStoredApiUrl,
+  fetchMarketSessionsOverview,
+  MarketSessionsOverview,
 } from "./api";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { AutoBotPanel } from "./components/AutoBotPanel";
@@ -45,6 +47,7 @@ import { MultiStrategyLab } from "./components/MultiStrategyLab";
 import { OrderBlockTerminal } from "./components/OrderBlockTerminal";
 import { TradingAcademyModal } from "./components/TradingAcademyModal";
 import { ServerConnectionModal } from "./components/ServerConnectionModal";
+import { MarketSessionsModal } from "./components/MarketSessionsModal";
 import {
   TrendingUp,
   RefreshCw,
@@ -83,6 +86,8 @@ export const App: React.FC = () => {
   const [showAcademyModal, setShowAcademyModal] = useState<boolean>(false);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(true);
   const [showServerModal, setShowServerModal] = useState<boolean>(false);
+  const [sessionsOverview, setSessionsOverview] = useState<MarketSessionsOverview | null>(null);
+  const [showSessionsModal, setShowSessionsModal] = useState<boolean>(false);
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);
@@ -273,14 +278,16 @@ export const App: React.FC = () => {
   const loadMarketData = async () => {
     setLoading(true);
     try {
-      const [cData, indData, tickers] = await Promise.all([
+      const [cData, indData, tickers, sessions] = await Promise.all([
         fetchCandles(selectedSymbol, timeframe),
         fetchIndicators(selectedSymbol, timeframe),
         fetchTickerStrip(),
+        fetchMarketSessionsOverview().catch(() => null),
       ]);
       setCandles(cData);
       setIndicators(indData);
       setTickerItems(tickers);
+      if (sessions) setSessionsOverview(sessions);
       setIsBackendConnected(true);
 
       if (cData.length > 0) {
@@ -773,6 +780,25 @@ export const App: React.FC = () => {
             <span style={{ fontWeight: 600 }}>MT4 EA (.mq4)</span>
           </a>
 
+          {/* Market Schedules Modal Trigger Button */}
+          <button
+            className="btn btn-outline"
+            style={{
+              borderColor: sessionsOverview?.open_count ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)",
+              background: "rgba(0, 0, 0, 0.2)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onClick={() => setShowSessionsModal(true)}
+            title="View Live Market Open / Close Timetable & Schedules for All Stocks"
+          >
+            <Clock size={14} color={sessionsOverview?.open_count ? "#10b981" : "#ef4444"} />
+            <span style={{ fontWeight: 600 }}>
+              Market Hours ({sessionsOverview?.open_count ? `🟢 ${sessionsOverview.open_count} Live` : "🔴 Closed"})
+            </span>
+          </button>
+
           {/* Quick Instrument Picker Trigger Button */}
           <button
             className="btn btn-primary"
@@ -1067,17 +1093,24 @@ export const App: React.FC = () => {
               Active Charts:
             </span>
             {[
+              { id: "XAUUSD", label: "GOLD (XAUUSD)", category: "COMMODITY" },
               { id: "NIFTY 50", label: "NIFTY 50", category: "INDEX" },
               { id: "BANKNIFTY", label: "BANKNIFTY", category: "INDEX" },
-              { id: "GOLD", label: "GOLD (XAUUSD)", category: "COMMODITY" },
               { id: "SILVER", label: "SILVER (XAGUSD)", category: "COMMODITY" },
               { id: "EUR/USD", label: "EUR/USD", category: "FOREX" },
               { id: "GBP/USD", label: "GBP/USD", category: "FOREX" },
-              { id: "BTC/USD", label: "BTC/USD", category: "CRYPTO" },
+              { id: "BTC-USD", label: "BTC/USD", category: "CRYPTO" },
               { id: "RELIANCE", label: "RELIANCE", category: "EQUITY" },
               { id: "TCS", label: "TCS", category: "EQUITY" },
             ].map((chartItem) => {
-              const isActive = selectedSymbol === chartItem.id;
+              const isActive = selectedSymbol === chartItem.id || (chartItem.id === "XAUUSD" && selectedSymbol === "GOLD");
+              const sessionMatch = sessionsOverview?.sessions.find(
+                (s) => s.symbol.toUpperCase() === chartItem.id.toUpperCase() ||
+                       (chartItem.id === "XAUUSD" && s.symbol.includes("XAU")) ||
+                       (chartItem.id.includes("BTC") && s.symbol.includes("BTC"))
+              );
+              const isOpen = sessionMatch ? sessionMatch.is_open : true;
+
               return (
                 <button
                   key={chartItem.id}
@@ -1092,9 +1125,20 @@ export const App: React.FC = () => {
                     border: isActive ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.08)",
                     cursor: "pointer",
                     whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
                     transition: "all 0.15s ease",
                   }}
                 >
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: isOpen ? "#10b981" : "#ef4444",
+                    }}
+                  />
                   {chartItem.label}
                 </button>
               );
@@ -1154,6 +1198,49 @@ export const App: React.FC = () => {
                     {currentTicker.change_pct.toFixed(2)}%)
                   </span>
                 )}
+
+                {/* Live Market Session Status Pill */}
+                {(() => {
+                  const sMatch = sessionsOverview?.sessions.find(
+                    (s) => s.symbol.toUpperCase() === selectedSymbol.toUpperCase() ||
+                           (selectedSymbol.toUpperCase().includes("XAU") && s.symbol.includes("XAU")) ||
+                           (selectedSymbol.toUpperCase().includes("GOLD") && s.symbol.includes("GOLD"))
+                  );
+                  if (!sMatch) return null;
+                  return (
+                    <button
+                      onClick={() => setShowSessionsModal(true)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "3px 8px",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        background: sMatch.is_open ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                        color: sMatch.status_color,
+                        border: `1px solid ${sMatch.is_open ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.35)"}`,
+                        cursor: "pointer",
+                      }}
+                      title="Click to view full opening and closing timetable"
+                    >
+                      <span
+                        style={{
+                          width: "7px",
+                          height: "7px",
+                          borderRadius: "50%",
+                          background: sMatch.status_color,
+                          boxShadow: sMatch.is_open ? "0 0 8px #10b981" : "none",
+                        }}
+                      />
+                      <span>{sMatch.status_badge}</span>
+                      <span style={{ color: "var(--text-dim)", fontWeight: 500, fontSize: "10px" }}>
+                        • {sMatch.timing_label}
+                      </span>
+                    </button>
+                  );
+                })()}
               </div>
 
               {/* Indian Standard Time (IST) Clock & Session Status */}
@@ -1913,6 +2000,14 @@ export const App: React.FC = () => {
           loadMarketData();
           loadSystemState();
         }}
+      />
+
+      {/* Global Market Schedules & Opening/Closing Timetable Modal */}
+      <MarketSessionsModal
+        isOpen={showSessionsModal}
+        onClose={() => setShowSessionsModal(false)}
+        sessionsData={sessionsOverview}
+        onSelectSymbol={(sym) => handleSelectInstrument(sym)}
       />
     </div>
   );

@@ -91,6 +91,35 @@ export async function fetchIndicators(symbol: string, timeframe: string, daysBac
   return res.json();
 }
 
+export interface MarketSessionItem {
+  symbol: string;
+  name: string;
+  class: string;
+  exchange: string;
+  is_open: boolean;
+  status_badge: "OPEN" | "CLOSED";
+  status_color: string;
+  session_status: string;
+  timing_label: string;
+  opens_at: string;
+  closes_at: string;
+}
+
+export interface MarketSessionsOverview {
+  current_time_ist: string;
+  current_time_utc: string;
+  open_count: number;
+  closed_count: number;
+  total_count: number;
+  sessions: MarketSessionItem[];
+}
+
+export async function fetchMarketSessionsOverview(): Promise<MarketSessionsOverview> {
+  const res = await fetch(`${API_BASE}/markets/sessions-overview`);
+  if (!res.ok) throw new Error("Failed to fetch market sessions overview");
+  return res.json();
+}
+
 export async function executeHistoricalReplay(
   symbol: string,
   cutoffTimestamp: string,

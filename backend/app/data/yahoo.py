@@ -56,10 +56,15 @@ class YahooFinanceProvider(BaseDataProvider):
         "USDINR=X": "USDINR=X",
         # Commodities & Metals (Gold Spot & Futures, Silver, Oil)
         "GOLD": "GC=F",
+        "XAUUSD": "GC=F",
+        "XAU/USD": "GC=F",
+        "XAUUSD=X": "GC=F",
         "GOLD SPOT": "GC=F",
         "GOLD FUTURES": "GC=F",
         "GC=F": "GC=F",
         "SILVER": "SI=F",
+        "XAGUSD": "SI=F",
+        "XAG/USD": "SI=F",
         "SILVER FUTURES": "SI=F",
         "SI=F": "SI=F",
         "CRUDE OIL": "CL=F",
@@ -81,8 +86,12 @@ class YahooFinanceProvider(BaseDataProvider):
         "TSLA": "TSLA",
         # Crypto
         "BTC-USD": "BTC-USD",
+        "BTC/USD": "BTC-USD",
+        "BTCUSD": "BTC-USD",
         "BITCOIN": "BTC-USD",
         "ETH-USD": "ETH-USD",
+        "ETH/USD": "ETH-USD",
+        "ETHUSD": "ETH-USD",
         "ETHEREUM": "ETH-USD",
     }
 

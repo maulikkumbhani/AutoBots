@@ -36,6 +36,7 @@ INSTRUMENTS_METADATA = [
 
     # Commodities & Metals (Gold Spot & Futures, Silver, Oil)
     {"id": 17, "symbol": "GOLD", "name": "Gold Spot / Futures (GC=F)", "exchange": "COMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.10, "lot_size": 1},
+    {"id": 29, "symbol": "XAUUSD", "name": "Gold Spot / US Dollar (MT5)", "exchange": "COMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
     {"id": 18, "symbol": "SILVER", "name": "Silver Futures (SI=F)", "exchange": "COMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
     {"id": 19, "symbol": "CRUDE OIL", "name": "Crude Oil WTI (CL=F)", "exchange": "NYMEX", "asset_class": "COMMODITY", "currency": "USD", "tick_size": 0.01, "lot_size": 1},
 
@@ -132,6 +133,7 @@ async def get_ticker_strip():
         {"display": "GBP/USD", "yahoo": "GBPUSD=X", "currency": "USD"},
         {"display": "EUR/USD", "yahoo": "EURUSD=X", "currency": "USD"},
         {"display": "GOLD", "yahoo": "GC=F", "currency": "USD"},
+        {"display": "XAUUSD", "yahoo": "GC=F", "currency": "USD"},
         {"display": "CRUDE OIL", "yahoo": "CL=F", "currency": "USD"},
         {"display": "RELIANCE.NS", "yahoo": "RELIANCE.NS", "currency": "INR"},
         {"display": "HDFCBANK.NS", "yahoo": "HDFCBANK.NS", "currency": "INR"},
@@ -248,3 +250,107 @@ async def get_quote(symbol: str = "NIFTY 50", provider: str = "yahoo"):
     except Exception:
         quote = await mock_provider.fetch_latest_quote(symbol)
     return quote
+
+
+@router.get("/sessions-overview")
+async def get_market_sessions_overview():
+    """
+    Returns live market session status, exact open/close schedule, and countdown
+    timers for all tracked symbols and asset categories.
+    """
+    now_utc = datetime.now(pytz.UTC)
+    now_ist = now_utc.astimezone(pytz.timezone("Asia/Kolkata"))
+    ist_weekday = now_ist.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+    ist_mins = now_ist.hour * 60 + now_ist.minute
+
+    symbols_to_check = [
+        {"symbol": "XAUUSD", "name": "Gold Spot (XAUUSD)", "class": "COMMODITY", "exchange": "COMEX / MT5"},
+        {"symbol": "GOLD", "name": "Gold Futures (GC=F)", "class": "COMMODITY", "exchange": "COMEX / MCX"},
+        {"symbol": "SILVER", "name": "Silver Futures", "class": "COMMODITY", "exchange": "COMEX / MCX"},
+        {"symbol": "CRUDE OIL", "name": "Crude Oil WTI", "class": "COMMODITY", "exchange": "NYMEX"},
+        {"symbol": "NIFTY 50", "name": "Nifty 50 Index", "class": "INDEX", "exchange": "NSE India"},
+        {"symbol": "BANKNIFTY", "name": "Bank Nifty Index", "class": "INDEX", "exchange": "NSE India"},
+        {"symbol": "SENSEX", "name": "BSE Sensex 30", "class": "INDEX", "exchange": "BSE India"},
+        {"symbol": "RELIANCE", "name": "Reliance Industries", "class": "STOCK", "exchange": "NSE India"},
+        {"symbol": "TCS", "name": "Tata Consultancy Services", "class": "STOCK", "exchange": "NSE India"},
+        {"symbol": "EUR/USD", "name": "Euro / US Dollar", "class": "FOREX", "exchange": "FOREX / MT5"},
+        {"symbol": "GBP/USD", "name": "British Pound / USD", "class": "FOREX", "exchange": "FOREX / MT5"},
+        {"symbol": "USD/JPY", "name": "US Dollar / Yen", "class": "FOREX", "exchange": "FOREX / MT5"},
+        {"symbol": "BTC-USD", "name": "Bitcoin / USD", "class": "CRYPTO", "exchange": "GLOBAL 24/7"},
+        {"symbol": "ETH-USD", "name": "Ethereum / USD", "class": "CRYPTO", "exchange": "GLOBAL 24/7"},
+        {"symbol": "^GSPC", "name": "S&P 500 Index", "class": "INDEX", "exchange": "NYSE / CBOE"},
+        {"symbol": "^IXIC", "name": "Nasdaq Composite", "class": "INDEX", "exchange": "NASDAQ"},
+    ]
+
+    results = []
+    for s in symbols_to_check:
+        sym = s["symbol"]
+        is_open, session_status = trading_bot.is_market_session_open(sym)
+
+        # Calculate exact timeline label
+        if s["class"] == "CRYPTO":
+            timing_label = "24/7 Always Open"
+            closes_at = "Never (Continuous)"
+            opens_at = "Live Now"
+        elif s["class"] == "INDEX" and ("NIFTY" in sym or "SENSEX" in sym or "BANK" in sym) or s["class"] == "STOCK":
+            if is_open:
+                rem_m = (15 * 60 + 30) - ist_mins
+                timing_label = f"Closes in {rem_m // 60}h {rem_m % 60}m (15:30 IST)"
+                closes_at = "Today 15:30 IST"
+                opens_at = "Opened 09:15 IST"
+            else:
+                timing_label = "Closed • Reopens Mon 09:15 IST" if ist_weekday >= 4 else "Closed • Reopens Next 09:15 IST"
+                closes_at = "15:30 IST"
+                opens_at = "Mon 09:15 IST" if ist_weekday >= 4 else "09:15 IST"
+        elif s["class"] == "COMMODITY":
+            if is_open:
+                rem_m = 1410 - ist_mins
+                timing_label = f"Closes in {rem_m // 60}h {rem_m % 60}m (23:30 IST)"
+                closes_at = "Today 23:30 IST"
+                opens_at = "Opened 09:00 IST"
+            else:
+                timing_label = "Closed for Weekend • Reopens Mon 09:00 IST" if ist_weekday >= 5 else "Closed • Reopens 09:00 IST"
+                closes_at = "23:30 IST"
+                opens_at = "Mon 09:00 IST" if ist_weekday >= 5 else "09:00 IST"
+        elif s["class"] == "FOREX":
+            if is_open:
+                timing_label = "24/5 Live Trading Session"
+                closes_at = "Fri 21:00 UTC"
+                opens_at = "Sun 21:00 UTC"
+            else:
+                timing_label = "Closed for Weekend • Reopens Sun 21:00 UTC"
+                closes_at = "Fri 21:00 UTC"
+                opens_at = "Sun 21:00 UTC"
+        else:
+            # US Markets
+            if is_open:
+                timing_label = "Live US Regular Hours"
+                closes_at = "Today 16:00 EST (01:30 IST)"
+                opens_at = "09:30 EST (19:00 IST)"
+            else:
+                timing_label = "Closed • Reopens Mon 19:00 IST (09:30 EST)" if ist_weekday >= 4 else "Closed • Reopens 19:00 IST"
+                closes_at = "16:00 EST"
+                opens_at = "Mon 09:30 EST" if ist_weekday >= 4 else "09:30 EST"
+
+        results.append({
+            "symbol": sym,
+            "name": s["name"],
+            "class": s["class"],
+            "exchange": s["exchange"],
+            "is_open": is_open,
+            "status_badge": "OPEN" if is_open else "CLOSED",
+            "status_color": "#10b981" if is_open else "#ef4444",
+            "session_status": session_status,
+            "timing_label": timing_label,
+            "opens_at": opens_at,
+            "closes_at": closes_at,
+        })
+
+    return {
+        "current_time_ist": now_ist.strftime("%d %b %Y, %I:%M:%S %p IST"),
+        "current_time_utc": now_utc.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "open_count": sum(1 for r in results if r["is_open"]),
+        "closed_count": sum(1 for r in results if not r["is_open"]),
+        "total_count": len(results),
+        "sessions": results,
+    }

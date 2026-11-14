@@ -136,7 +136,8 @@ class AutoTradingBot:
         self.monitored_assets: List[Dict[str, Any]] = [
             {"symbol": "NIFTY 50", "name": "Nifty 50 Index", "category": "INDEX", "default_qty": 1.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
             {"symbol": "BANKNIFTY", "name": "Bank Nifty Index", "category": "INDEX", "default_qty": 1.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
-            {"symbol": "GOLD", "name": "Gold Spot / Futures (XAUUSD)", "category": "COMMODITY", "default_qty": 0.05, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+            {"symbol": "GOLD", "name": "Gold Spot / Futures (GC=F)", "category": "COMMODITY", "default_qty": 0.05, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
+            {"symbol": "XAUUSD", "name": "Gold Spot (XAUUSD MT5)", "category": "COMMODITY", "default_qty": 0.05, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"},
             {"symbol": "SILVER", "name": "Silver Futures (XAGUSD)", "category": "COMMODITY", "default_qty": 1.0, "best_model": "STATISTICAL", "currency": "USD"},
             {"symbol": "USD/INR", "name": "USD to Indian Rupee", "category": "FOREX", "default_qty": 50.0, "best_model": "HIGH_VOLUME_SCALPER", "currency": "INR"},
             {"symbol": "RELIANCE", "name": "Reliance Industries", "category": "EQUITY", "default_qty": 2.0, "best_model": "ENSEMBLE", "currency": "INR"},
@@ -385,9 +386,9 @@ class AutoTradingBot:
                         price = 158.15
                     elif "INR" in sym_u:
                         price = 94.93
-                    elif "GC=F" in sym_u or "GOLD" in sym_u:
+                    elif "GC=F" in sym_u or "GOLD" in sym_u or "XAU" in sym_u:
                         price = 4130.0
-                    elif "SI=F" in sym_u or "SILVER" in sym_u:
+                    elif "SI=F" in sym_u or "SILVER" in sym_u or "XAG" in sym_u:
                         price = 57.2
                     elif "CL=F" in sym_u or "OIL" in sym_u:
                         price = 100.7

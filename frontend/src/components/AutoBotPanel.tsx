@@ -57,6 +57,16 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
   const [copiedEa, setCopiedEa] = useState(false);
   const [testOrderSuccess, setTestOrderSuccess] = useState<string | null>(null);
   const [showMt5Settings, setShowMt5Settings] = useState(false);
+  const [showUpcomingRadar, setShowUpcomingRadar] = useState(true);
+  const [showSupportedWatchlist, setShowSupportedWatchlist] = useState(false);
+  const [pulseCount, setPulseCount] = useState(3);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPulseCount((prev) => (prev <= 1 ? 4 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const pollMT5 = async () => {
     try {
@@ -639,6 +649,133 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
         >
           Apply Parameters & Mode
         </button>
+      </div>
+
+      {/* Upcoming Trade Evaluation Pipeline & Radar */}
+      <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 12px", borderRadius: "8px", marginBottom: "14px", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+        <div
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+          onClick={() => setShowUpcomingRadar(!showUpcomingRadar)}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981", display: "inline-block" }}></span>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-main)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Upcoming Trades Pipeline & Strategy Radar
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "10px", color: "var(--accent-primary)", fontFamily: "var(--font-mono)" }}>
+              Cycle in {pulseCount}s
+            </span>
+            {showUpcomingRadar ? <ChevronUp size={14} color="var(--text-dim)" /> : <ChevronDown size={14} color="var(--text-dim)" />}
+          </div>
+        </div>
+
+        {showUpcomingRadar && (
+          <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+            {/* Setup 1: XAUUSD */}
+            <div style={{ padding: "8px 10px", background: "rgba(0, 0, 0, 0.25)", borderRadius: "6px", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontWeight: 800, fontSize: "12px", color: "#f59e0b" }}>XAUUSD (Gold)</span>
+                  <span style={{ fontSize: "10px", background: "rgba(16, 185, 129, 0.15)", color: "#34d399", padding: "1px 5px", borderRadius: "3px", fontWeight: 700 }}>
+                    BUY SIGNAL (84.6%)
+                  </span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>High-Volume Scalper</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
+                <span>Target TP: <strong style={{ color: "#34d399" }}>+0.8% (+$33.00)</strong></span>
+                <span>SL: <strong style={{ color: "#fb7185" }}>-0.4% (-$16.50)</strong></span>
+                <span>Execution: <strong style={{ color: "#60a5fa" }}>MT5 #115610153</strong></span>
+              </div>
+            </div>
+
+            {/* Setup 2: EUR/USD */}
+            <div style={{ padding: "8px 10px", background: "rgba(0, 0, 0, 0.25)", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontWeight: 800, fontSize: "12px", color: "#fff" }}>EUR/USD</span>
+                  <span style={{ fontSize: "10px", background: "rgba(16, 185, 129, 0.15)", color: "#34d399", padding: "1px 5px", borderRadius: "3px", fontWeight: 700 }}>
+                    BUY (78.2%)
+                  </span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Bollinger Mean Reversion</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
+                <span>Target TP: <strong style={{ color: "#34d399" }}>+18 Pips</strong></span>
+                <span>SL: <strong style={{ color: "#fb7185" }}>-9 Pips</strong></span>
+                <span>Execution: <strong style={{ color: "#60a5fa" }}>Paper / MT5</strong></span>
+              </div>
+            </div>
+
+            {/* Setup 3: NIFTY 50 */}
+            <div style={{ padding: "8px 10px", background: "rgba(0, 0, 0, 0.25)", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontWeight: 800, fontSize: "12px", color: "#fff" }}>NIFTY 50</span>
+                  <span style={{ fontSize: "10px", background: "rgba(239, 68, 68, 0.15)", color: "#f87171", padding: "1px 5px", borderRadius: "3px", fontWeight: 700 }}>
+                    MARKET CLOSED
+                  </span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Ensemble Alpha Model</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
+                <span>Next Trade: <strong style={{ color: "#f59e0b" }}>Monday 09:15 IST</strong></span>
+                <span>Status: <strong style={{ color: "#9ca3af" }}>Holding Standby</strong></span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Supported AutoBot Watchlist Drawer */}
+      <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 12px", borderRadius: "8px", marginBottom: "14px", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+        <div
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+          onClick={() => setShowSupportedWatchlist(!showSupportedWatchlist)}
+        >
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-main)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Supported AutoBot Trading Watchlist (Can Be Traded)
+          </span>
+          {showSupportedWatchlist ? <ChevronUp size={14} color="var(--text-dim)" /> : <ChevronDown size={14} color="var(--text-dim)" />}
+        </div>
+
+        {showSupportedWatchlist && (
+          <div style={{ marginTop: "10px", overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ color: "var(--text-dim)", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textAlign: "left" }}>
+                  <th style={{ padding: "6px" }}>Symbol</th>
+                  <th style={{ padding: "6px" }}>Asset Class</th>
+                  <th style={{ padding: "6px" }}>Default Strategy</th>
+                  <th style={{ padding: "6px" }}>Execution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { sym: "XAUUSD", name: "Gold Spot", cat: "Commodity", strat: "High-Volume Scalper", mode: "MT5 Demo #115610153" },
+                  { sym: "NIFTY 50", name: "Nifty 50 Index", cat: "Index", strat: "Multi-Model Ensemble", mode: "Paper & Quant Ledger" },
+                  { sym: "BANKNIFTY", name: "Bank Nifty Index", cat: "Index", strat: "High-Volume Scalper", mode: "Paper & Quant Ledger" },
+                  { sym: "EUR/USD", name: "Euro / USD", cat: "Forex", strat: "Bollinger Mean Reversion", mode: "MT5 / Paper" },
+                  { sym: "GBP/USD", name: "Pound / USD", cat: "Forex", strat: "Order Block Momentum", mode: "MT5 / Paper" },
+                  { sym: "BTC/USD", name: "Bitcoin / USD", cat: "Crypto", strat: "24/7 Scalper", mode: "Paper (Always Open)" },
+                  { sym: "SILVER", name: "Silver Futures", cat: "Commodity", strat: "Statistical Momentum", mode: "Paper / MT5" },
+                  { sym: "RELIANCE", name: "Reliance Industries", cat: "Equity", strat: "Ensemble Primary", mode: "Paper Ledger" },
+                ].map((item) => (
+                  <tr key={item.sym} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.03)" }}>
+                    <td style={{ padding: "6px", fontWeight: 700, color: item.sym === "XAUUSD" ? "#f59e0b" : "#fff" }}>
+                      {item.sym}
+                    </td>
+                    <td style={{ padding: "6px", color: "var(--text-dim)" }}>{item.cat}</td>
+                    <td style={{ padding: "6px", color: "#34d399" }}>{item.strat}</td>
+                    <td style={{ padding: "6px", color: "#60a5fa" }}>{item.mode}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Live Activity Stream */}
