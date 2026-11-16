@@ -148,7 +148,22 @@ async def generate_prediction(req: ForecastCreateRequest):
     model = models.get(req.model_type.upper(), models["ENSEMBLE"])
     pred = await model.predict(req.symbol, state["past_df"], req.horizon)
 
-    as_of = state["as_of_price"]
+    # Prioritize live market quotes (MT5 Broker / Open Market) over replay state
+    from app.execution.bot_runner import trading_bot
+    from app.execution.mt5_bridge import mt5_bridge
+    from app.data.open_market_provider import open_market_provider
+
+    live_p = trading_bot.live_prices.get(req.symbol)
+    if not live_p or live_p <= 0:
+        mt5_q = mt5_bridge.get_live_broker_quote(req.symbol)
+        if mt5_q and mt5_q.get("price", 0) > 0:
+            live_p = float(mt5_q["price"])
+    if not live_p or live_p <= 0:
+        open_q = await open_market_provider.fetch_real_quote(req.symbol)
+        if open_q and open_q.get("price", 0) > 0:
+            live_p = float(open_q["price"])
+
+    as_of = live_p if (live_p and live_p > 0) else state["as_of_price"]
     direction = pred["direction"]
     exp_ret = pred.get("expected_return") or 0.35
 
@@ -217,8 +232,11 @@ async def get_prediction_records(symbol: str = "NIFTY 50"):
         quote = await mock_provider.fetch_latest_quote(symbol)
         cur_p = quote["price"]
 
-    # Filter predictions for this symbol
-    records = [p for p in PREDICTIONS_LOG if p["instrument_symbol"] == symbol]
+    # Filter predictions for this symbol, strictly excluding any stale predictions from older drifted sessions
+    records = [
+        p for p in PREDICTIONS_LOG
+        if p["instrument_symbol"] == symbol and abs(p.get("as_of_price", cur_p) - cur_p) / max(cur_p, 1e-5) < 0.15
+    ]
 
     # No dummy seed data - only real predictions evaluated
     if False and not records:

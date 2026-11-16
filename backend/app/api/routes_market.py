@@ -167,16 +167,16 @@ async def get_ticker_strip():
     from app.data.open_market_provider import open_market_provider
 
     symbols = [
-        {"display": "NIFTY 50", "yahoo": "^NSEI", "currency": "INR", "baseline": 24148.0, "prev_close": 24180.0},
-        {"display": "BANK NIFTY", "yahoo": "^NSEBANK", "currency": "INR", "baseline": 51800.0, "prev_close": 51750.0},
-        {"display": "SENSEX", "yahoo": "^BSESN", "currency": "INR", "baseline": 79486.0, "prev_close": 79540.0},
+        {"display": "NIFTY 50", "yahoo": "^NSEI", "currency": "INR", "baseline": 25252.95, "prev_close": 25144.30},
+        {"display": "BANK NIFTY", "yahoo": "^NSEBANK", "currency": "INR", "baseline": 52150.0, "prev_close": 51900.0},
+        {"display": "SENSEX", "yahoo": "^BSESN", "currency": "INR", "baseline": 82850.0, "prev_close": 82500.0},
         {"display": "GBP/USD", "yahoo": "GBPUSD=X", "currency": "USD", "baseline": 1.3140, "prev_close": 1.3120},
         {"display": "EUR/USD", "yahoo": "EURUSD=X", "currency": "USD", "baseline": 1.0850, "prev_close": 1.0840},
         {"display": "GOLD", "yahoo": "GC=F", "currency": "USD", "baseline": 3867.15, "prev_close": 3883.94},
         {"display": "XAUUSD", "yahoo": "GC=F", "currency": "USD", "baseline": 3867.15, "prev_close": 3883.94},
         {"display": "CRUDE OIL", "yahoo": "CL=F", "currency": "USD", "baseline": 70.50, "prev_close": 70.20},
-        {"display": "RELIANCE.NS", "yahoo": "RELIANCE.NS", "currency": "INR", "baseline": 2715.0, "prev_close": 2710.0},
-        {"display": "HDFCBANK.NS", "yahoo": "HDFCBANK.NS", "currency": "INR", "baseline": 1680.0, "prev_close": 1675.0},
+        {"display": "RELIANCE.NS", "yahoo": "RELIANCE.NS", "currency": "INR", "baseline": 1275.0, "prev_close": 1270.0},
+        {"display": "HDFCBANK.NS", "yahoo": "HDFCBANK.NS", "currency": "INR", "baseline": 1745.0, "prev_close": 1740.0},
         {"display": "S&P 500", "yahoo": "^GSPC", "currency": "USD", "baseline": 5864.0, "prev_close": 5860.0},
         {"display": "NASDAQ", "yahoo": "^IXIC", "currency": "USD", "baseline": 18518.0, "prev_close": 18500.0},
         {"display": "BTC-USD", "yahoo": "BTC-USD", "currency": "USD", "baseline": 89500.0, "prev_close": 89100.0},

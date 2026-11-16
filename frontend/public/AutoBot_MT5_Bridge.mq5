@@ -11,8 +11,8 @@
 #include <Trade\Trade.mqh>
 
 //--- Input Parameters
-input group "=== AutoBot Server Settings ==="
-input string   InpServerUrl       = "http://127.0.0.1:8000"; // AutoBot Backend URL
+input group "=== AutoBot Server Connection ==="
+input string   InpServerUrl       = "http://127.0.0.1:8000"; // InpServerUrl (AutoBot Server URL)
 input int      InpPollIntervalSec = 2;                       // Poll Interval (Seconds)
 input ulong    InpMagicNumber     = 888999;                  // Unique Magic Number
 input double   InpDefaultLots     = 0.10;                    // Default Lot Size

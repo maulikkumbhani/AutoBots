@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { createChart, ColorType, IChartApi, ISeriesApi, IPriceLine } from "lightweight-charts";
+import { createChart, ColorType, IChartApi, ISeriesApi, IPriceLine, PriceScaleMode } from "lightweight-charts";
 import { Candle, IndicatorValues } from "../types";
 
 interface Props {
@@ -74,6 +74,8 @@ export const TradingViewChart: React.FC<Props> = ({
       width: container.clientWidth,
       height: 450,
       timeScale: {
+        barSpacing: 10,
+        minBarSpacing: 3,
         timeVisible: true,
         secondsVisible: true,
         borderColor: "rgba(255, 255, 255, 0.08)",
@@ -138,6 +140,31 @@ export const TradingViewChart: React.FC<Props> = ({
         vertLine: { color: "rgba(99, 102, 241, 0.5)", width: 1, style: 3 },
         horzLine: { color: "rgba(99, 102, 241, 0.5)", width: 1, style: 3 },
       },
+      rightPriceScale: {
+        autoScale: true,
+        scaleMargins: {
+          top: 0.08,
+          bottom: 0.18,
+        },
+        mode: PriceScaleMode.Normal,
+        borderVisible: true,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        alignLabels: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: {
+          time: true,
+          price: true, // Allows vertical drag on the right price scale to zoom pricing
+        },
+        mouseWheel: true,
+        pinch: true,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
     });
 
     chartRef.current = chart;
@@ -150,6 +177,8 @@ export const TradingViewChart: React.FC<Props> = ({
       borderDownColor: "#ef4444",
       wickUpColor: "#10b981",
       wickDownColor: "#ef4444",
+      borderVisible: true,
+      wickVisible: true,
     });
 
     // Volume series
@@ -272,7 +301,14 @@ export const TradingViewChart: React.FC<Props> = ({
       }
     }
 
-    // Indicators
+    // Indicators: filter out stale outlier values that deviate >15% from real candle price
+    const lastCandlePrice = formattedCandles.length > 0 ? formattedCandles[formattedCandles.length - 1].close : 0;
+    const isRealisticValue = (val: number | null | undefined) => {
+      if (val == null || isNaN(val) || val <= 0) return false;
+      if (lastCandlePrice <= 0) return true;
+      return Math.abs(val - lastCandlePrice) / lastCandlePrice < 0.15;
+    };
+
     const sortedIndicators = [...indicators]
       .map((ind) => ({
         ...ind,
@@ -293,7 +329,7 @@ export const TradingViewChart: React.FC<Props> = ({
       ema9SeriesRef.current.setData(
         showEma9
           ? dedupedInd
-              .filter((ind) => ind.ema_9 != null)
+              .filter((ind) => isRealisticValue(ind.ema_9))
               .map((ind) => ({ time: ind.time, value: ind.ema_9! }))
           : []
       );
@@ -303,7 +339,7 @@ export const TradingViewChart: React.FC<Props> = ({
       ema20SeriesRef.current.setData(
         showEma20
           ? dedupedInd
-              .filter((ind) => ind.ema_20 != null)
+              .filter((ind) => isRealisticValue(ind.ema_20))
               .map((ind) => ({ time: ind.time, value: ind.ema_20! }))
           : []
       );
@@ -313,7 +349,7 @@ export const TradingViewChart: React.FC<Props> = ({
       ema50SeriesRef.current.setData(
         showEma50
           ? dedupedInd
-              .filter((ind) => ind.ema_50 != null)
+              .filter((ind) => isRealisticValue(ind.ema_50))
               .map((ind) => ({ time: ind.time, value: ind.ema_50! }))
           : []
       );
@@ -323,12 +359,12 @@ export const TradingViewChart: React.FC<Props> = ({
       if (showBollinger) {
         bbUpperSeriesRef.current.setData(
           dedupedInd
-            .filter((ind) => ind.bb_upper != null)
+            .filter((ind) => isRealisticValue(ind.bb_upper))
             .map((ind) => ({ time: ind.time, value: ind.bb_upper! }))
         );
         bbLowerSeriesRef.current.setData(
           dedupedInd
-            .filter((ind) => ind.bb_lower != null)
+            .filter((ind) => isRealisticValue(ind.bb_lower))
             .map((ind) => ({ time: ind.time, value: ind.bb_lower! }))
         );
       } else {
@@ -364,6 +400,13 @@ export const TradingViewChart: React.FC<Props> = ({
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
+    const lastClose = candles.length > 0 ? Number(candles[candles.length - 1].close) : 0;
+    const isPriceLineRealistic = (p: number | null | undefined) => {
+      if (!p || isNaN(p) || p <= 0) return false;
+      if (lastClose <= 0) return true;
+      return Math.abs(p - lastClose) / lastClose < 0.15;
+    };
+
     // Remove existing target line if any
     if (targetLineRef.current) {
       try {
@@ -373,7 +416,7 @@ export const TradingViewChart: React.FC<Props> = ({
       }
       targetLineRef.current = null;
     }
-    if (targetPrice && targetPrice > 0) {
+    if (isPriceLineRealistic(targetPrice)) {
       let etaLabel = "";
       if (targetHitTime) {
         try {
@@ -393,7 +436,7 @@ export const TradingViewChart: React.FC<Props> = ({
         }
       }
       targetLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: targetPrice,
+        price: targetPrice!,
         color: "#10b981",
         lineWidth: 2,
         lineStyle: 1, // 1 = Dashed
@@ -411,9 +454,9 @@ export const TradingViewChart: React.FC<Props> = ({
       }
       stopLossLineRef.current = null;
     }
-    if (stopLossPrice && stopLossPrice > 0) {
+    if (isPriceLineRealistic(stopLossPrice)) {
       stopLossLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: stopLossPrice,
+        price: stopLossPrice!,
         color: "#ef4444",
         lineWidth: 2,
         lineStyle: 1, // 1 = Dashed
@@ -431,9 +474,9 @@ export const TradingViewChart: React.FC<Props> = ({
       }
       entryLineRef.current = null;
     }
-    if (entryPrice && entryPrice > 0) {
+    if (isPriceLineRealistic(entryPrice)) {
       entryLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: entryPrice,
+        price: entryPrice!,
         color: "#6366f1",
         lineWidth: 1,
         lineStyle: 2, // 2 = Dotted

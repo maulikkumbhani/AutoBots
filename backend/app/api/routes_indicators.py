@@ -29,16 +29,55 @@ async def calculate_indicators(
     now = datetime.now(pytz.UTC)
     start_time = now - timedelta(days=days_back)
     
-    selected_provider = yahoo_provider if provider.lower() == "yahoo" else mock_provider
-    try:
-        df = await selected_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
-        if df.empty and provider.lower() == "yahoo":
-            df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
-    except Exception:
-        df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
+    # 1. MT5 Live Broker Candles
+    from app.execution.mt5_bridge import mt5_bridge
+    mt5_candles = mt5_bridge.get_live_broker_candles(symbol)
+    df = None
+    if mt5_candles and len(mt5_candles) > 0:
+        import pandas as pd
+        rows = [
+            {
+                "timestamp": c["timestamp"],
+                "open": float(c["open"]),
+                "high": float(c["high"]),
+                "low": float(c["low"]),
+                "close": float(c["close"]),
+                "volume": float(c.get("volume", 100.0)),
+            }
+            for c in mt5_candles
+        ]
+        df = pd.DataFrame(rows)
 
-    if df.empty:
+    # 2. Open Market Provider (Binance PAXG 1:1 Spot Gold, Crypto, etc.)
+    if df is None or df.empty:
+        from app.data.open_market_provider import open_market_provider
+        open_df = await open_market_provider.fetch_real_candles(symbol, timeframe)
+        if open_df is not None and not open_df.empty:
+            df = open_df
+
+    # 3. Yahoo Finance or Calibrated Mock
+    if df is None or df.empty:
+        selected_provider = yahoo_provider if provider.lower() == "yahoo" else mock_provider
+        try:
+            df = await selected_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
+            if df.empty and provider.lower() == "yahoo":
+                df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
+        except Exception:
+            df = await mock_provider.fetch_historical_candles(symbol, timeframe, start_time, now)
+
+    if df is None or df.empty:
         return []
+
+    # Sync with live tick if within reasonable deviation
+    from app.execution.bot_runner import trading_bot
+    live_price = trading_bot.live_prices.get(symbol)
+    if live_price and live_price > 0:
+        last_close = float(df.iloc[-1]["close"])
+        if abs(live_price - last_close) / max(last_close, 1e-6) < 0.25:
+            last_idx = df.index[-1]
+            df.loc[last_idx, "close"] = live_price
+            df.loc[last_idx, "high"] = max(df.loc[last_idx, "high"], live_price)
+            df.loc[last_idx, "low"] = min(df.loc[last_idx, "low"], live_price)
 
     df_calc = TechnicalIndicatorEngine.calculate_all(df)
 
