@@ -664,9 +664,11 @@ class AutoTradingBot:
             direction = pred["direction"]
 
             if direction == "up" and p_up >= self.min_confidence:
-                cost = cur_price * qty
-                if PORTFOLIO_STATE["current_cash"] < cost:
-                    return cycle_action_log
+                # Only check cash in pure paper trading mode; MT5 relies on broker free margin
+                if self.execution_mode != "MT5_LIVE" and not self.mt5_auto_trade:
+                    cost = cur_price * qty
+                    if PORTFOLIO_STATE["current_cash"] < cost:
+                        return cycle_action_log
 
                 sl_price = round(cur_price * (1.0 - self.stop_loss_pct / 100.0), precision)
                 tp_price = round(cur_price * (1.0 + self.take_profit_pct / 100.0), precision)
@@ -798,6 +800,15 @@ class AutoTradingBot:
                 target_assets = [{"symbol": self.symbol, "name": self.symbol, "category": "INDEX", "default_qty": 1.0, "currency": "INR"}]
         else:
             target_assets = [a for a in self.monitored_assets if self.enabled_assets.get(a["symbol"], True)]
+
+        # CRITICAL: Always include MT5 connected symbol (XAUUSD) when MT5 Bridge is enabled
+        # This guarantees that MT5 automated trading evaluates and takes trades on XAUUSD continuously!
+        if self.mt5_auto_trade or mt5_bridge.enabled:
+            if not any(a["symbol"] == "XAUUSD" for a in target_assets):
+                xau_asset = next((a for a in self.monitored_assets if a["symbol"] == "XAUUSD"), None)
+                if not xau_asset:
+                    xau_asset = {"symbol": "XAUUSD", "name": "Gold Spot (XAUUSD MT5)", "category": "COMMODITY", "default_qty": 0.05, "best_model": "HIGH_VOLUME_SCALPER", "currency": "USD"}
+                target_assets.append(xau_asset)
 
         for asset in target_assets:
             sym = asset["symbol"]

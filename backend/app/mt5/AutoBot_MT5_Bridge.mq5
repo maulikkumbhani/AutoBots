@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AutoBot Quant Engine"
 #property link      "http://localhost:8000"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -15,22 +15,82 @@ input group "=== AutoBot Server Connection ==="
 input string   InpServerUrl       = "http://127.0.0.1:8000"; // InpServerUrl (AutoBot Server URL)
 input int      InpPollIntervalSec = 2;                       // Poll Interval (Seconds)
 input ulong    InpMagicNumber     = 888999;                  // Unique Magic Number
-input double   InpDefaultLots     = 0.10;                    // Default Lot Size
+input double   InpDefaultLots     = 0.05;                    // Default Lot Size (e.g. 0.05 for Gold)
 input ulong    InpDeviationPoints = 20;                      // Slippage Tolerance (Points)
 
 //--- Global Objects
 CTrade         ExtTrade;
 datetime       ExtLastPollTime = 0;
+int            ExtExecutedCount = 0;
+string         ExtLastStatus = "Initializing...";
+
+//+------------------------------------------------------------------+
+//| Utility to clean and normalize base server URL                   |
+//+------------------------------------------------------------------+
+string CleanUrl(string url)
+{
+   string cleaned = url;
+   StringTrimLeft(cleaned);
+   StringTrimRight(cleaned);
+   while (StringLen(cleaned) > 0 && StringSubstr(cleaned, StringLen(cleaned) - 1, 1) == "/")
+   {
+      cleaned = StringSubstr(cleaned, 0, StringLen(cleaned) - 1);
+   }
+   return cleaned;
+}
+
+//+------------------------------------------------------------------+
+//| Dynamically sets supported order filling mode for current broker |
+//+------------------------------------------------------------------+
+void SetOptimalFillingMode(string sym)
+{
+   uint filling = (uint)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+   if ((filling & SYMBOL_FILLING_FOK) != 0)
+   {
+      ExtTrade.SetTypeFilling(ORDER_FILLING_FOK);
+   }
+   else if ((filling & SYMBOL_FILLING_IOC) != 0)
+   {
+      ExtTrade.SetTypeFilling(ORDER_FILLING_IOC);
+   }
+   else
+   {
+      ExtTrade.SetTypeFilling(ORDER_FILLING_RETURN);
+   }
+}
+
+// Forward declarations
+void SendHeartbeat();
+void PollAndExecuteSignals();
+void ParseAndExecuteSignals(string jsonStr);
+void ReportExecution(string sigId, ulong ticket, string sym, string side, double lots, double price, double sl, double tp, bool success, int errCode, string errMsg);
+string ExtractJsonString(string src, string key);
+double ExtractJsonDouble(string src, string key);
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("Initializing AutoBot MT5 Execution Bridge...");
+   Print("==================================================================");
+   Print("[AutoBot] Initializing AutoBot MT5 Execution Bridge v1.10...");
+   PrintFormat("[AutoBot] Server URL: %s | Target Chart: %s", InpServerUrl, _Symbol);
+
    ExtTrade.SetExpertMagicNumber(InpMagicNumber);
    ExtTrade.SetDeviationInPoints(InpDeviationPoints);
-   ExtTrade.SetTypeFilling(ORDER_FILLING_IOC);
+   SetOptimalFillingMode(_Symbol);
+
+   // Check if Algo Trading is enabled globally in MT5
+   if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   {
+      Print("⚠️ [AutoBot WARNING] 'Algo Trading' button at top MT5 toolbar is OFF (Red)!");
+      Print("👉 Please CLICK the 'Algo Trading' button in MT5 to turn it GREEN!");
+   }
+   if (!MQLInfoInteger(MQL_TRADE_ALLOWED))
+   {
+      Print("⚠️ [AutoBot WARNING] Automated trading is not permitted for this EA!");
+      Print("👉 Right-click Chart -> Expert List -> AutoBot_MT5_Bridge -> Properties -> Common tab -> CHECK 'Allow Algo Trading'!");
+   }
 
    // Set timer for periodic polling of AutoBot prediction signals
    EventSetTimer(InpPollIntervalSec);
@@ -38,8 +98,8 @@ int OnInit()
    // Send initial registration heartbeat
    SendHeartbeat();
 
-   Print("AutoBot MT5 Bridge Successfully Started! Listening for signals at: ", InpServerUrl);
-   Comment("⚡ AutoBot MT5 Bridge ACTIVE\nServer: ", InpServerUrl, "\nMagic: ", InpMagicNumber, "\nConnected: Yes");
+   Print("[AutoBot] AutoBot MT5 Bridge Successfully Started!");
+   Print("==================================================================");
    return(INIT_SUCCEEDED);
 }
 
@@ -50,7 +110,20 @@ void OnDeinit(const int reason)
 {
    EventKillTimer();
    Comment("");
-   Print("AutoBot MT5 Bridge Stopped.");
+   Print("[AutoBot] AutoBot MT5 Bridge Stopped. Reason: ", reason);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function (Instant execution on live price change)    |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   datetime now = TimeCurrent();
+   if (now - ExtLastPollTime >= InpPollIntervalSec)
+   {
+      ExtLastPollTime = now;
+      PollAndExecuteSignals();
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -70,7 +143,8 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void SendHeartbeat()
 {
-   string url = InpServerUrl + "/api/v1/mt5/bridge/heartbeat";
+   string base = CleanUrl(InpServerUrl);
+   string url = base + "/api/v1/mt5/bridge/heartbeat";
    string headers = "Content-Type: application/json\r\n";
    
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -122,6 +196,60 @@ void SendHeartbeat()
    char result[];
    string resultHeaders;
    int res = WebRequest("POST", url, headers, 3000, postData, result, resultHeaders);
+
+   bool algoBtnOn = (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
+   bool eaTradeOn = (bool)MQLInfoInteger(MQL_TRADE_ALLOWED);
+
+   if (res == 200)
+   {
+      ExtLastStatus = "LIVE STREAMING";
+      Comment(StringFormat(
+         "⚡ AutoBot MT5 Bridge: CONNECTED (OK 200)\n" +
+         "--------------------------------------------------\n" +
+         "Server: %s\n" +
+         "Account: %d | Server: %s\n" +
+         "Symbol: %s | Live Price: %.2f\n" +
+         "Balance: $%.2f | Free Margin: $%.2f\n" +
+         "Total Orders Executed: %d\n" +
+         "--------------------------------------------------\n" +
+         "Algo Trading Button: %s\n" +
+         "EA Trade Allowed: %s",
+         base, login, server, _Symbol, price, balance, free_margin, ExtExecutedCount,
+         algoBtnOn ? "✅ ON (Green)" : "❌ OFF (Click 'Algo Trading' at top!)",
+         eaTradeOn ? "✅ ENABLED" : "❌ DISABLED (Check EA Common Tab!)"
+      ));
+   }
+   else
+   {
+      int err = GetLastError();
+      string hint = "";
+      if (err == 4060)
+      {
+         ExtLastStatus = "BLOCKED (Error 4060)";
+         hint = "⚠️ ERROR 4060: WebRequest Blocked by MT5 Security!\n" +
+                "Fix in 3 clicks:\n" +
+                "1. MT5 Menu -> Tools -> Options (Cmd+, / Ctrl+O)\n" +
+                "2. Click 'Expert Advisors' tab\n" +
+                "3. Check 'Allow WebRequest for listed URL'\n" +
+                "4. Add: " + base + "\n" +
+                "5. Also add: http://localhost:8000";
+      }
+      else
+      {
+         ExtLastStatus = StringFormat("HTTP %d (Err %d)", res, err);
+         hint = StringFormat("⚠️ Connection Failed (HTTP %d, Error %d)\nMake sure AutoBot backend is running on %s", res, err, base);
+      }
+
+      Comment(StringFormat(
+         "⚡ AutoBot MT5 Bridge: %s\n" +
+         "--------------------------------------------------\n" +
+         "%s\n" +
+         "--------------------------------------------------\n" +
+         "Server Target: %s",
+         ExtLastStatus, hint, base
+      ));
+      PrintFormat("[AutoBot] Heartbeat WebRequest failed: HTTP %d, Error %d. %s", res, err, hint);
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -129,7 +257,8 @@ void SendHeartbeat()
 //+------------------------------------------------------------------+
 void PollAndExecuteSignals()
 {
-   string url = InpServerUrl + "/api/v1/mt5/bridge/pending-signals";
+   string base = CleanUrl(InpServerUrl);
+   string url = base + "/api/v1/mt5/bridge/pending-signals";
    char postData[];
    char result[];
    string resultHeaders;
@@ -138,8 +267,19 @@ void PollAndExecuteSignals()
    if (res == 200 && ArraySize(result) > 2)
    {
       string responseJson = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
-      // Process simple JSON array of signals
-      ParseAndExecuteSignals(responseJson);
+      if (StringFind(responseJson, "\"signal_id\"") >= 0)
+      {
+         PrintFormat("[AutoBot] Received pending trade signals: %s", responseJson);
+         ParseAndExecuteSignals(responseJson);
+      }
+   }
+   else if (res != 200)
+   {
+      int err = GetLastError();
+      if (err == 4060)
+      {
+         Print("[AutoBot ERROR 4060] Add '", base, "' to MT5 -> Tools -> Options -> Expert Advisors -> Allow WebRequest!");
+      }
    }
 }
 
@@ -149,6 +289,18 @@ void PollAndExecuteSignals()
 void ParseAndExecuteSignals(string jsonStr)
 {
    if (StringFind(jsonStr, "\"signal_id\"") < 0) return;
+
+   // Pre-check Algo Trading permissions before executing
+   if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   {
+      Print("❌ [AutoBot CANNOT EXECUTE] Algo Trading button at top MT5 toolbar is OFF! Please click it to turn GREEN.");
+      return;
+   }
+   if (!MQLInfoInteger(MQL_TRADE_ALLOWED))
+   {
+      Print("❌ [AutoBot CANNOT EXECUTE] 'Allow Algo Trading' is unchecked in EA Properties Common tab!");
+      return;
+   }
 
    // Resilient JSON object extractor
    int pos = 0;
@@ -181,7 +333,22 @@ void ParseAndExecuteSignals(string jsonStr)
       // Ensure symbol is active in Market Watch
       SymbolSelect(symbol, true);
 
-      // Execute order
+      // Set optimal filling mode (FOK / IOC / RETURN) for this specific symbol
+      SetOptimalFillingMode(symbol);
+
+      // Extract fresh live tick
+      MqlTick tick;
+      if (!SymbolInfoTick(symbol, tick))
+      {
+         SymbolSelect(symbol, true);
+         SymbolInfoTick(symbol, tick);
+      }
+
+      // Check broker stop levels to prevent 10016 TRADE_RETCODE_INVALID_STOPS
+      long stopsLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      double minDistance = (stopsLevel + 5) * point;
+
       bool success = false;
       ulong ticket = 0;
       double execPrice = 0.0;
@@ -190,13 +357,25 @@ void ParseAndExecuteSignals(string jsonStr)
 
       if (side == "BUY")
       {
-         execPrice = SymbolInfoDouble(symbol, SYMBOL_ASK);
+         execPrice = tick.ask > 0.0 ? tick.ask : SymbolInfoDouble(symbol, SYMBOL_ASK);
+         if (minDistance > 0.0)
+         {
+            if (sl > 0.0 && (execPrice - sl) < minDistance) sl = execPrice - minDistance;
+            if (tp > 0.0 && (tp - execPrice) < minDistance) tp = execPrice + minDistance;
+         }
+         PrintFormat("[AutoBot EXEC] Placing BUY %.2f lots %s @ %.5f (SL: %.5f, TP: %.5f)...", lots, symbol, execPrice, sl, tp);
          success = ExtTrade.Buy(lots, symbol, execPrice, sl, tp, comment);
          ticket = ExtTrade.ResultOrder();
       }
       else if (side == "SELL")
       {
-         execPrice = SymbolInfoDouble(symbol, SYMBOL_BID);
+         execPrice = tick.bid > 0.0 ? tick.bid : SymbolInfoDouble(symbol, SYMBOL_BID);
+         if (minDistance > 0.0)
+         {
+            if (sl > 0.0 && (sl - execPrice) < minDistance) sl = execPrice + minDistance;
+            if (tp > 0.0 && (execPrice - tp) < minDistance) tp = execPrice - minDistance;
+         }
+         PrintFormat("[AutoBot EXEC] Placing SELL %.2f lots %s @ %.5f (SL: %.5f, TP: %.5f)...", lots, symbol, execPrice, sl, tp);
          success = ExtTrade.Sell(lots, symbol, execPrice, sl, tp, comment);
          ticket = ExtTrade.ResultOrder();
       }
@@ -205,11 +384,12 @@ void ParseAndExecuteSignals(string jsonStr)
       {
          errCode = (int)ExtTrade.ResultRetcode();
          errMsg = ExtTrade.ResultRetcodeDescription();
-         PrintFormat("AutoBot execution error for %s %s: Code %d - %s", side, symbol, errCode, errMsg);
+         PrintFormat("❌ [AutoBot EXEC FAILED] %s %s: Code %d - %s", side, symbol, errCode, errMsg);
       }
       else
       {
-         PrintFormat("AutoBot SUCCESS! Ticket #%d: %s %.2f lots %s @ %.5f", ticket, side, lots, symbol, execPrice);
+         ExtExecutedCount++;
+         PrintFormat("🚀 [AutoBot SUCCESSFUL ORDER] Ticket #%d: %s %.2f lots %s @ %.5f", ticket, side, lots, symbol, execPrice);
       }
 
       // Report result back to AutoBot server
@@ -222,7 +402,8 @@ void ParseAndExecuteSignals(string jsonStr)
 //+------------------------------------------------------------------+
 void ReportExecution(string sigId, ulong ticket, string sym, string side, double lots, double price, double sl, double tp, bool success, int errCode, string errMsg)
 {
-   string url = InpServerUrl + "/api/v1/mt5/bridge/order-result";
+   string base = CleanUrl(InpServerUrl);
+   string url = base + "/api/v1/mt5/bridge/order-result";
    string headers = "Content-Type: application/json\r\n";
 
    string json = StringFormat(
