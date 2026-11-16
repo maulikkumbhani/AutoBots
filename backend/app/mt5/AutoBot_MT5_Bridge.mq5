@@ -82,9 +82,37 @@ void SendHeartbeat()
    string server = AccountInfoString(ACCOUNT_SERVER);
    string currency = AccountInfoString(ACCOUNT_CURRENCY);
 
+   // Extract real live broker quotes from current chart
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double price = (bid > 0.0 && ask > 0.0) ? ((bid + ask) / 2.0) : (bid > 0.0 ? bid : ask);
+
+   double day_open = iOpen(_Symbol, PERIOD_D1, 0);
+   double day_high = iHigh(_Symbol, PERIOD_D1, 0);
+   double day_low = iLow(_Symbol, PERIOD_D1, 0);
+   double prev_close = iClose(_Symbol, PERIOD_D1, 1);
+   if (prev_close <= 0.0) prev_close = day_open > 0 ? day_open : price;
+
+   // Extract latest 30 OHLCV candles to stream directly to AutoBot web terminal
+   MqlRates rates[];
+   ArraySetAsSeries(rates, false);
+   int copied = CopyRates(_Symbol, _Period, 0, 30, rates);
+   string candlesJson = "[";
+   for(int i = 0; i < copied; i++)
+   {
+      string cStr = StringFormat(
+         "{\"timestamp\":\"%s\",\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"volume\":%.1f}",
+         TimeToString(rates[i].time, TIME_DATE|TIME_SECONDS),
+         rates[i].open, rates[i].high, rates[i].low, rates[i].close, (double)rates[i].tick_volume
+      );
+      candlesJson += (i > 0 ? "," : "") + cStr;
+   }
+   candlesJson += "]";
+
    string json = StringFormat(
-      "{\"account\":\"%d\",\"server\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"leverage\":%d,\"currency\":\"%s\"}",
-      login, server, balance, equity, margin, free_margin, leverage, currency
+      "{\"account\":\"%d\",\"server\":\"%s\",\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"leverage\":%d,\"currency\":\"%s\",\"symbol\":\"%s\",\"bid\":%.5f,\"ask\":%.5f,\"price\":%.5f,\"day_open\":%.5f,\"day_high\":%.5f,\"day_low\":%.5f,\"prev_close\":%.5f,\"candles\":%s}",
+      login, server, balance, equity, margin, free_margin, leverage, currency,
+      _Symbol, bid, ask, price, day_open, day_high, day_low, prev_close, candlesJson
    );
 
    char postData[];

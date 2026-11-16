@@ -50,6 +50,10 @@ class MT5BridgeManager:
         self.executed_trades: List[Dict[str, Any]] = []
         self.open_mt5_positions: List[Dict[str, Any]] = []
 
+        # Real-time broker live market telemetry received directly from MT5 terminal
+        self.live_broker_quotes: Dict[str, Dict[str, Any]] = {}
+        self.live_broker_candles: Dict[str, List[Dict[str, Any]]] = {}
+
         self.account_info: Dict[str, Any] = {
             "balance": 100000.0,
             "equity": 100000.0,
@@ -183,6 +187,69 @@ class MT5BridgeManager:
 
         if "open_positions" in payload and isinstance(payload["open_positions"], list):
             self.open_mt5_positions = payload["open_positions"]
+
+        # Ingest Real Live Market Telemetry transmitted directly from MT5 Terminal
+        if "symbol" in payload and ("bid" in payload or "price" in payload or "last" in payload):
+            raw_sym = str(payload["symbol"]).strip().upper()
+            bid = float(payload.get("bid", 0.0))
+            ask = float(payload.get("ask", 0.0))
+            price = float(payload.get("price", payload.get("last", (bid + ask) / 2.0 if bid > 0 and ask > 0 else (bid or ask))))
+            day_open = float(payload.get("day_open", price))
+            day_high = float(payload.get("day_high", price))
+            day_low = float(payload.get("day_low", price))
+            prev_close = float(payload.get("prev_close", day_open))
+            if prev_close <= 0.0:
+                prev_close = day_open if day_open > 0 else price
+            day_change = price - prev_close
+            day_change_pct = (day_change / prev_close * 100.0) if prev_close > 0 else 0.0
+
+            quote_data = {
+                "symbol": raw_sym,
+                "bid": bid,
+                "ask": ask,
+                "price": price,
+                "open": day_open,
+                "high": day_high,
+                "low": day_low,
+                "prev_close": prev_close,
+                "change": round(day_change, 2 if "XAU" in raw_sym else 4),
+                "change_pct": round(day_change_pct, 2),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "MT5_LIVE_BROKER",
+            }
+
+            self.live_broker_quotes[raw_sym] = quote_data
+            if raw_sym == "XAUUSD":
+                self.live_broker_quotes["GOLD"] = dict(quote_data, symbol="GOLD")
+            elif raw_sym == "GOLD":
+                self.live_broker_quotes["XAUUSD"] = dict(quote_data, symbol="XAUUSD")
+
+        # Ingest Real Live OHLCV Candles transmitted directly from MT5
+        if "candles" in payload and isinstance(payload["candles"], list) and len(payload["candles"]) > 0:
+            raw_sym = str(payload.get("symbol", "XAUUSD")).strip().upper()
+            self.live_broker_candles[raw_sym] = payload["candles"]
+            if raw_sym == "XAUUSD":
+                self.live_broker_candles["GOLD"] = payload["candles"]
+            elif raw_sym == "GOLD":
+                self.live_broker_candles["XAUUSD"] = payload["candles"]
+
+    def get_live_broker_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Returns direct live broker quote if MT5 is streaming telemetry."""
+        sym_u = symbol.upper().strip()
+        if sym_u in self.live_broker_quotes:
+            return self.live_broker_quotes[sym_u]
+        if "GOLD" in sym_u or "XAU" in sym_u:
+            return self.live_broker_quotes.get("XAUUSD") or self.live_broker_quotes.get("GOLD")
+        return None
+
+    def get_live_broker_candles(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
+        """Returns direct live broker candles from MT5 if available."""
+        sym_u = symbol.upper().strip()
+        if sym_u in self.live_broker_candles:
+            return self.live_broker_candles[sym_u]
+        if "GOLD" in sym_u or "XAU" in sym_u:
+            return self.live_broker_candles.get("XAUUSD") or self.live_broker_candles.get("GOLD")
+        return None
 
     def get_status(self) -> Dict[str, Any]:
         """Returns bridge status for frontend display."""

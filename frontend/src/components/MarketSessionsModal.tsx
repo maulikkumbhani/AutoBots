@@ -298,3 +298,4 @@ export const MarketSessionsModal: React.FC<Props> = ({
     </div>
   );
 };
+

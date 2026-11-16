@@ -61,53 +61,53 @@ class MockDataProvider(BaseDataProvider):
         # Initial price base anchored to real market values
         sym_u = symbol.upper()
         if "BANK" in sym_u:
-            base_price = 55488.0
+            base_price = 51800.0
         elif "NIFTY" in sym_u:
-            base_price = 22888.0
+            base_price = 24148.0
         elif "SENSEX" in sym_u or "BSESN" in sym_u:
-            base_price = 73850.0
+            base_price = 79500.0
         elif "RELIANCE" in sym_u:
-            base_price = 1202.0
+            base_price = 1265.0
         elif "HDFC" in sym_u:
-            base_price = 712.0
-        elif "TCS" in sym_u:
-            base_price = 2460.0
-        elif "INFY" in sym_u:
-            base_price = 1130.0
-        elif "ICICI" in sym_u:
-            base_price = 1380.0
-        elif "SBIN" in sym_u:
-            base_price = 974.0
-        elif "BHARTI" in sym_u:
             base_price = 1750.0
+        elif "TCS" in sym_u:
+            base_price = 4150.0
+        elif "INFY" in sym_u:
+            base_price = 1850.0
+        elif "ICICI" in sym_u:
+            base_price = 1260.0
+        elif "SBIN" in sym_u:
+            base_price = 810.0
+        elif "BHARTI" in sym_u:
+            base_price = 1580.0
         elif "LT" in sym_u:
             base_price = 3600.0
         elif "KOTAK" in sym_u:
             base_price = 1780.0
         elif "GBP" in sym_u:
-            base_price = 1.3348
+            base_price = 1.3226
         elif "EUR" in sym_u:
-            base_price = 1.1218
+            base_price = 1.1052
         elif "JPY" in sym_u:
-            base_price = 158.15
+            base_price = 154.50
         elif "INR" in sym_u or "USDINR" in sym_u:
-            base_price = 94.93
+            base_price = 94.25
         elif "GC=F" in sym_u or "GOLD" in sym_u or "XAU" in sym_u:
-            base_price = 4130.0
+            base_price = 3867.15
         elif "SI=F" in sym_u or "SILVER" in sym_u or "XAG" in sym_u:
-            base_price = 57.2
+            base_price = 31.20
         elif "CL=F" in sym_u or "OIL" in sym_u:
-            base_price = 100.7
+            base_price = 71.50
         elif "GSPC" in sym_u or "S&P" in sym_u:
-            base_price = 7690.0
+            base_price = 5870.0
         elif "IXIC" in sym_u or "NDX" in sym_u or "NASDAQ" in sym_u:
-            base_price = 26430.0
+            base_price = 18650.0
         elif "DJI" in sym_u or "DOW" in sym_u or "US30" in sym_u:
-            base_price = 51975.0
+            base_price = 43450.0
         elif "BTC" in sym_u or "BITCOIN" in sym_u:
-            base_price = 81500.0
+            base_price = 89500.0
         elif "ETH" in sym_u or "ETHEREUM" in sym_u:
-            base_price = 2600.0
+            base_price = 3100.0
         elif "AAPL" in sym_u:
             base_price = 342.0
         elif "MSFT" in sym_u:

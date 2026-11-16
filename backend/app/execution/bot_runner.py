@@ -346,6 +346,31 @@ class AutoTradingBot:
     def get_live_tick(self, symbol: str) -> Dict[str, Any]:
         """Returns the active real-time ticking candle and price for symbol."""
         now = datetime.now(timezone.utc)
+
+        # 0. Primary Source: Direct live broker telemetry from MT5 Terminal!
+        broker_q = mt5_bridge.get_live_broker_quote(symbol)
+        if broker_q and broker_q.get("price", 0) > 0:
+            price = float(broker_q["price"])
+            candle = {
+                "timestamp": now.isoformat(),
+                "open": float(broker_q.get("open", price)),
+                "high": float(broker_q.get("high", price)),
+                "low": float(broker_q.get("low", price)),
+                "close": price,
+                "volume": 5000.0,
+            }
+            self.live_prices[symbol] = price
+            self.live_candles[symbol] = candle
+            return {
+                "symbol": symbol,
+                "price": price,
+                "bid": float(broker_q.get("bid", price)),
+                "ask": float(broker_q.get("ask", price)),
+                "timestamp": now.isoformat(),
+                "source": "MT5_LIVE_BROKER",
+                "latest_candle": candle,
+            }
+
         price = self.live_prices.get(symbol)
         candle = self.live_candles.get(symbol)
 
@@ -367,61 +392,61 @@ class AutoTradingBot:
                 # 2. Try TICKER_CACHE from routes_market
                 from app.api.routes_market import TICKER_CACHE
                 cached_item = TICKER_CACHE.get(symbol)
-                if cached_item and "price" in cached_item:
+                if cached_item and "price" in cached_item and float(cached_item["price"]) > 0:
                     price = float(cached_item["price"])
                 else:
-                    # Realistic defaults by asset type
+                    # Real market defaults
                     sym_u = symbol.upper()
                     if "BANK" in sym_u:
-                        price = 55488.0
+                        price = 51800.0
                     elif "NIFTY" in sym_u:
-                        price = 22888.0
+                        price = 24148.0
                     elif "SENSEX" in sym_u or "BSESN" in sym_u:
-                        price = 73850.0
+                        price = 79500.0
                     elif "GBP" in sym_u:
-                        price = 1.3348
+                        price = 1.3226
                     elif "EUR" in sym_u:
-                        price = 1.1218
+                        price = 1.1052
                     elif "JPY" in sym_u:
-                        price = 158.15
+                        price = 154.50
                     elif "INR" in sym_u:
-                        price = 94.93
+                        price = 94.25
                     elif "GC=F" in sym_u or "GOLD" in sym_u or "XAU" in sym_u:
-                        price = 4130.0
+                        price = 3867.15
                     elif "SI=F" in sym_u or "SILVER" in sym_u or "XAG" in sym_u:
-                        price = 57.2
+                        price = 31.20
                     elif "CL=F" in sym_u or "OIL" in sym_u:
-                        price = 100.7
+                        price = 71.50
                     elif "RELIANCE" in sym_u:
-                        price = 1202.0
+                        price = 1265.0
                     elif "HDFC" in sym_u:
-                        price = 712.0
+                        price = 1750.0
                     elif "TCS" in sym_u:
-                        price = 2460.0
+                        price = 4150.0
                     elif "INFY" in sym_u:
-                        price = 1130.0
+                        price = 1850.0
                     elif "ICICI" in sym_u:
-                        price = 1380.0
+                        price = 1260.0
                     elif "SBIN" in sym_u:
-                        price = 974.0
+                        price = 810.0
                     elif "GSPC" in sym_u or "S&P" in sym_u:
-                        price = 7690.0
+                        price = 5870.0
                     elif "IXIC" in sym_u or "NASDAQ" in sym_u:
-                        price = 26430.0
+                        price = 18650.0
                     elif "DJI" in sym_u or "DOW" in sym_u or "US30" in sym_u:
-                        price = 51975.0
+                        price = 43450.0
                     elif "BTC" in sym_u:
-                        price = 81500.0
+                        price = 89500.0
                     elif "ETH" in sym_u:
-                        price = 2600.0
+                        price = 3100.0
                     elif "AAPL" in sym_u:
-                        price = 342.0
+                        price = 228.0
                     elif "MSFT" in sym_u:
-                        price = 490.0
+                        price = 422.0
                     elif "NVDA" in sym_u:
-                        price = 217.0
+                        price = 145.0
                     elif "TSLA" in sym_u:
-                        price = 220.0
+                        price = 320.0
                     else:
                         price = 1000.0
 
