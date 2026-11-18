@@ -48,6 +48,7 @@ import { OrderBlockTerminal } from "./components/OrderBlockTerminal";
 import { TradingAcademyModal } from "./components/TradingAcademyModal";
 import { ServerConnectionModal } from "./components/ServerConnectionModal";
 import { MarketSessionsModal } from "./components/MarketSessionsModal";
+import { XauusdHub } from "./components/XauusdHub";
 import {
   TrendingUp,
   RefreshCw,
@@ -76,10 +77,14 @@ import {
   Play,
   Square,
   BookOpen,
+  LayoutDashboard,
 } from "lucide-react";
 
 export const App: React.FC = () => {
-  const [selectedSymbol, setSelectedSymbol] = useState("NIFTY 50");
+  const [currentView, setCurrentView] = useState<"TERMINAL" | "XAUUSD">(
+    window.location.hash.toLowerCase().includes("xau") ? "XAUUSD" : "TERMINAL"
+  );
+  const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [timeframe, setTimeframe] = useState("15m");
   const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
   const [terminalMode, setTerminalMode] = useState<"simplified" | "pro">("simplified");
@@ -460,7 +465,7 @@ export const App: React.FC = () => {
   const handleToggleBot = async () => {
     setIsTogglingBot(true);
     try {
-      if (botStatus?.is_running) {
+      if (botStatus?.is_running || botStatus?.is_active) {
         await stopBot();
       } else {
         await startBot(selectedSymbol);
@@ -515,6 +520,17 @@ export const App: React.FC = () => {
       clearInterval(stateInterval);
     };
   }, [selectedSymbol, autoSync, timeframe]);
+
+  // Synchronize URL hash with subpage view (#xauusd or #terminal)
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash.toLowerCase();
+      if (h.includes("xau")) setCurrentView("XAUUSD");
+      else if (h.includes("terminal") || h === "#/" || h === "") setCurrentView("TERMINAL");
+    };
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   // Handle switching instruments
   const handleSelectInstrument = async (symbol: string) => {
@@ -684,6 +700,46 @@ export const App: React.FC = () => {
             <div className="brand-title">Quantitative AI Market Intelligence & Alpha Trading</div>
             <div className="brand-subtitle">Point-in-Time Replay Lab • Multi-Market Paper Trading</div>
           </div>
+        </div>
+
+        {/* Subpage View Switcher */}
+        <div style={{ display: "flex", gap: "6px", marginLeft: "14px", marginRight: "10px" }}>
+          <button
+            className={`btn ${currentView === "TERMINAL" ? "btn-primary" : "btn-outline"}`}
+            style={{ fontSize: "11px", padding: "5px 10px", display: "flex", alignItems: "center", gap: "5px" }}
+            onClick={() => {
+              setCurrentView("TERMINAL");
+              window.location.hash = "#/terminal";
+            }}
+            title="Multi-Asset Quant Dashboard"
+          >
+            <LayoutDashboard size={13} />
+            <span>Terminal</span>
+          </button>
+          <button
+            className={`btn ${currentView === "XAUUSD" ? "btn-primary" : "btn-outline"}`}
+            style={{
+              fontSize: "11px",
+              padding: "5px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              borderColor: "rgba(245, 158, 11, 0.6)",
+              background: currentView === "XAUUSD" ? "linear-gradient(135deg, #d97706, #b45309)" : "rgba(245, 158, 11, 0.12)",
+              color: currentView === "XAUUSD" ? "#fff" : "#f59e0b",
+              fontWeight: 800,
+            }}
+            onClick={() => {
+              setCurrentView("XAUUSD");
+              window.location.hash = "#/xauusd";
+            }}
+            title="Dedicated XAUUSD Gold Spot & MT5 Bridge Hub"
+          >
+            <span>🪙 XAUUSD Hub</span>
+            <span style={{ fontSize: "9px", background: "rgba(0,0,0,0.3)", padding: "1px 4px", borderRadius: "3px" }}>
+              MT5
+            </span>
+          </button>
         </div>
 
         {/* Live Real Ticker Strip */}
@@ -953,24 +1009,28 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Bot Mission Control HUD Bar */}
+      {currentView === "XAUUSD" ? (
+        <XauusdHub onBackToMain={() => { setCurrentView("TERMINAL"); window.location.hash = "#/terminal"; }} />
+      ) : (
+        <>
+          {/* Bot Mission Control HUD Bar */}
       <div className="bot-mission-control-hud">
         <div className="hud-left">
           <div className="hud-status-badge">
-            <div className={`hud-pulse ${botStatus?.is_running ? "active" : "inactive"}`} />
+            <div className={`hud-pulse ${(botStatus?.is_running || botStatus?.is_active) ? "active" : "inactive"}`} />
             <span className="hud-label">24/7 AUTO ENGINE:</span>
-            <span className={`hud-val ${botStatus?.is_running ? "green" : "dim"}`}>
-              {botStatus?.is_running ? "RUNNING LIVE" : "STANDBY / PAUSED"}
+            <span className={`hud-val ${(botStatus?.is_running || botStatus?.is_active) ? "green" : "dim"}`}>
+              {(botStatus?.is_running || botStatus?.is_active) ? "RUNNING LIVE" : "STANDBY / PAUSED"}
             </span>
             <button
-              className={`hud-btn-toggle ${botStatus?.is_running ? "pause" : "start"}`}
+              className={`hud-btn-toggle ${(botStatus?.is_running || botStatus?.is_active) ? "pause" : "start"}`}
               onClick={handleToggleBot}
               disabled={isTogglingBot}
-              title={botStatus?.is_running ? "Pause Bot Execution" : "Start 24/7 Server Bot"}
+              title={(botStatus?.is_running || botStatus?.is_active) ? "Pause Bot Execution" : "Start 24/7 Server Bot"}
             >
               {isTogglingBot ? (
                 <RefreshCw size={11} className="animate-spin" />
-              ) : botStatus?.is_running ? (
+              ) : (botStatus?.is_running || botStatus?.is_active) ? (
                 <>
                   <Square size={10} fill="currentColor" /> Pause
                 </>
@@ -1979,6 +2039,8 @@ export const App: React.FC = () => {
           />
         </aside>
       </main>
+        </>
+      )}
 
       {/* Interactive Academy & Learning Guide Modal */}
       <TradingAcademyModal

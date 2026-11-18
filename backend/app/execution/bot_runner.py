@@ -37,14 +37,14 @@ class AutoTradingBot:
         self._loop_task: Optional[asyncio.Task] = None
         self.poll_interval = 3.5  # Run cycle every 3.5 seconds
 
-        self.symbol = "NIFTY 50"
+        self.symbol = "XAUUSD"
         self.timeframe = "15m"
         self.strategy_type = "HIGH_VOLUME_SCALPER"  # Default to high-volume micro scalper
         self.trading_scope = "ACTIVE_ONLY"  # "ACTIVE_ONLY" (trade only user's active stock) or "ALL_MONITORED"
         self.execution_mode = "MT5_LIVE" # "PAPER" or "MT5_LIVE"
         self.mt5_auto_trade = True       # Automatically forward signals to MT5
         self.mt4_auto_trade = False      # Automatically forward signals to OctaFX MT4
-        self.quantity = 1.0              # Realistic retail position sizing (1 unit per trade)
+        self.quantity = 0.05             # Default 0.05 lot size for XAUUSD Gold Spot
         self.take_profit_pct = 0.8       # 0.8% target for responsive intraday profit realization
         self.stop_loss_pct = 0.4         # 0.4% stop loss (2:1 Reward:Risk)
         self.trailing_stop_pct = 0.25    # 0.25% trailing stop
@@ -215,6 +215,7 @@ class AutoTradingBot:
 
         return {
             "is_active": self.is_active,
+            "is_running": self.is_active,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "current_price": cur_price,

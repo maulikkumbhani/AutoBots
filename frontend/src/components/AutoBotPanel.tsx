@@ -92,6 +92,29 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
     }
   }, [botStatus?.trading_scope]);
 
+  useEffect(() => {
+    if (botStatus?.execution_mode) {
+      setExecutionMode(botStatus.execution_mode);
+      setMt5AutoTrade(botStatus.execution_mode === "MT5_LIVE" || !!botStatus.mt5_auto_trade);
+    }
+  }, [botStatus?.execution_mode, botStatus?.mt5_auto_trade]);
+
+  const handleSetExecutionMode = async (mode: "PAPER" | "MT5_LIVE") => {
+    setExecutionMode(mode);
+    const isMt5 = mode === "MT5_LIVE";
+    setMt5AutoTrade(isMt5);
+    try {
+      await configureBot({
+        symbol: activeSymbol,
+        execution_mode: mode,
+        mt5_auto_trade: isMt5,
+      });
+      onRefresh();
+    } catch (err) {
+      console.error("Failed to update execution mode:", err);
+    }
+  };
+
   const handleUpdateScope = async (scope: "ACTIVE_ONLY" | "ALL_MONITORED") => {
     setTradingScope(scope);
     try {
@@ -252,10 +275,7 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
       {/* Execution Mode Selector: Paper vs MT5 Live */}
       <div style={{ display: "flex", gap: "6px", marginBottom: "12px", background: "rgba(10, 14, 22, 0.7)", padding: "4px", borderRadius: "8px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
         <button
-          onClick={() => {
-            setExecutionMode("PAPER");
-            setMt5AutoTrade(false);
-          }}
+          onClick={() => handleSetExecutionMode("PAPER")}
           style={{
             flex: 1,
             padding: "6px 10px",
@@ -273,10 +293,7 @@ export const AutoBotPanel: React.FC<Props> = ({ botStatus, activeSymbol = "NIFTY
           🛡️ Paper Simulation
         </button>
         <button
-          onClick={() => {
-            setExecutionMode("MT5_LIVE");
-            setMt5AutoTrade(true);
-          }}
+          onClick={() => handleSetExecutionMode("MT5_LIVE")}
           style={{
             flex: 1,
             padding: "6px 10px",
