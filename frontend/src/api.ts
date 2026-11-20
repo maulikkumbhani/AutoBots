@@ -345,6 +345,113 @@ export async function fetchMT5EACode(): Promise<{ filename: string; code: string
   return res.json();
 }
 
+export interface RecordedMT5Trade {
+  ticket: number;
+  signal_id: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  lots: number;
+  executed_price: number;
+  current_price: number;
+  sl: number;
+  tp: number;
+  pnl: number;
+  pnl_status: "PROFIT" | "LOSS";
+  strategy: string;
+  strategy_name: string;
+  horizon: string;
+  timeframe: string;
+  success: boolean;
+  executed_at: string;
+}
+
+export interface StrategyPerformanceItem {
+  strategy_id: string;
+  name: string;
+  horizon: string;
+  default_tf: string;
+  description: string;
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  gross_profit: number;
+  gross_loss: number;
+  net_pnl: number;
+  profit_factor: number;
+  is_active: boolean;
+  is_isolated: boolean;
+}
+
+export interface FvgAnalysisResponse {
+  strategy: string;
+  strategy_name: string;
+  horizon: string;
+  timeframe_focus: string;
+  signal: "BUY" | "SELL" | "NEUTRAL";
+  direction: "LONG" | "SHORT" | "FLAT";
+  confidence: number;
+  entry_price: number;
+  take_profit: number;
+  stop_loss: number;
+  reward_risk: number;
+  gap_details: Record<string, any>;
+  active_gaps_found: number;
+  bullish_gaps_count: number;
+  bearish_gaps_count: number;
+}
+
+export async function fetchMT5Trades(
+  timeframe: string = "all",
+  period: string = "all",
+  strategy: string = "all"
+): Promise<{
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  net_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number;
+  current_equity: number;
+  current_balance: number;
+  trades: RecordedMT5Trade[];
+}> {
+  const params = new URLSearchParams({ timeframe, period, strategy });
+  const res = await fetch(`${API_BASE}/mt5/bridge/trades?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch MT5 trades");
+  return res.json();
+}
+
+export async function fetchStrategyPerformance(): Promise<{
+  active_isolation: string;
+  strategies: StrategyPerformanceItem[];
+  total_net_pnl: number;
+  total_trades_count: number;
+  active_count: number;
+}> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/strategy-performance`);
+  if (!res.ok) throw new Error("Failed to fetch strategy performance");
+  return res.json();
+}
+
+export async function isolateStrategy(strategyId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/isolate-strategy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ strategy_id: strategyId }),
+  });
+  if (!res.ok) throw new Error("Failed to isolate strategy");
+  return res.json();
+}
+
+export async function fetchFvgAnalysis(symbol: string = "XAUUSD"): Promise<FvgAnalysisResponse> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/fvg-analysis?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch FVG analysis");
+  return res.json();
+}
+
 export interface MultiAssetPosition {
   id: number;
   side: "LONG" | "SHORT" | "BUY" | "SELL";

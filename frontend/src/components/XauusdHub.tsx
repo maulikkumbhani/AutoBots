@@ -20,7 +20,14 @@ import {
   ArrowDownRight,
   Sliders,
   DollarSign,
-  Maximize2
+  Maximize2,
+  Filter,
+  BarChart3,
+  Flame,
+  Target,
+  Sparkles,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { TradingViewChart } from "./TradingViewChart";
 import {
@@ -29,13 +36,13 @@ import {
   fetchLiveTick,
   fetchCandles,
   fetchIndicators,
-  fetchPredictionRecords,
-  startBot,
-  stopBot,
-  configureBot,
-  triggerBotCycle,
-  fetchPositions,
-  fetchPortfolio,
+  fetchMT5Trades,
+  fetchStrategyPerformance,
+  isolateStrategy,
+  fetchFvgAnalysis,
+  RecordedMT5Trade,
+  StrategyPerformanceItem,
+  FvgAnalysisResponse,
 } from "../api";
 
 interface XauusdHubProps {
@@ -49,69 +56,124 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const [indicators, setIndicators] = useState<any>(null);
   const [liveTick, setLiveTick] = useState<any>(null);
   const [mt5Status, setMt5Status] = useState<any>(null);
-  const [predictions, setPredictions] = useState<any[]>([]);
   const [lotSize, setLotSize] = useState<number>(0.05);
-  const [selectedStrategy, setSelectedStrategy] = useState("HIGH_VOLUME_SCALPER");
-  const [isBotRunning, setIsBotRunning] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<"ANALYSIS" | "LEDGER" | "SETUP">("ANALYSIS");
-  const [positions, setPositions] = useState<any[]>([]);
 
-  // Load chart and indicator data
-  const loadChartData = async () => {
+  // Tabs
+  const [activeTab, setActiveTab] = useState<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">("ANALYSIS");
+
+  // Filter States for MT5 Trade Ledger
+  const [ledgerTimeframe, setLedgerTimeframe] = useState<string>("all");
+  const [ledgerPeriod, setLedgerPeriod] = useState<string>("all");
+  const [ledgerStrategy, setLedgerStrategy] = useState<string>("all");
+
+  // Strategy & FVG Data
+  const [strategyMatrix, setStrategyMatrix] = useState<StrategyPerformanceItem[]>([]);
+  const [isolatedStrategyId, setIsolatedStrategyId] = useState<string>("ALL");
+  const [fvgData, setFvgData] = useState<FvgAnalysisResponse | null>(null);
+  const [tradesData, setTradesData] = useState<{
+    total_trades: number;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    net_pnl: number;
+    gross_profit: number;
+    gross_loss: number;
+    profit_factor: number;
+    current_equity: number;
+    current_balance: number;
+    trades: RecordedMT5Trade[];
+  }>({
+    total_trades: 0,
+    wins: 0,
+    losses: 0,
+    win_rate: 0,
+    net_pnl: 0,
+    gross_profit: 0,
+    gross_loss: 0,
+    profit_factor: 1,
+    current_equity: 100000,
+    current_balance: 100000,
+    trades: [],
+  });
+
+  // Load telemetry, chart, strategy matrix, and trades
+  const loadData = async () => {
     try {
-      const now = new Date();
-      const from = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
-      const [cData, indData, tick, mt5, preds, posData] = await Promise.all([
+      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes] = await Promise.all([
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
         fetchLiveTick(symbol).catch(() => null),
         fetchMT5Status().catch(() => null),
-        fetchPredictionRecords(symbol).catch(() => ({ records: [] })),
-        fetchPositions().catch(() => []),
+        fetchStrategyPerformance().catch(() => null),
+        fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy).catch(() => null),
+        fetchFvgAnalysis(symbol).catch(() => null),
       ]);
 
       if (cData && cData.length > 0) setCandles(cData);
       if (indData) setIndicators(indData);
       if (tick) setLiveTick(tick);
       if (mt5) setMt5Status(mt5);
-      if (preds && (preds as any).records) setPredictions((preds as any).records);
-      if (posData) setPositions(posData.filter((p: any) => p.symbol === "XAUUSD" || p.symbol === "GOLD"));
+      if (matrixRes) {
+        setStrategyMatrix(matrixRes.strategies || []);
+        setIsolatedStrategyId(matrixRes.active_isolation || "ALL");
+      }
+      if (tradesRes) setTradesData(tradesRes);
+      if (fvgRes) setFvgData(fvgRes);
     } catch (e) {
       console.error("Error loading XAUUSD Hub data:", e);
     }
   };
 
   useEffect(() => {
-    loadChartData();
-    const interval = setInterval(loadChartData, 2500);
+    loadData();
+    const interval = setInterval(loadData, 2500);
     return () => clearInterval(interval);
-  }, [timeframe]);
+  }, [timeframe, ledgerTimeframe, ledgerPeriod, ledgerStrategy]);
 
-  const handleManualOrder = async (side: "BUY" | "SELL") => {
+  // Strategy Isolation Handler
+  const handleIsolateStrategy = async (stratId: string) => {
+    try {
+      await isolateStrategy(stratId);
+      setIsolatedStrategyId(stratId);
+      setActionMessage(
+        stratId === "ALL"
+          ? "✅ All 6 Quantitative Strategies are now actively trading simultaneously."
+          : `⚡ Isolated Active Testing: Bot will ONLY execute ${stratId} signals on MT5.`
+      );
+      setTimeout(() => setActionMessage(null), 4000);
+      loadData();
+    } catch (e: any) {
+      setActionMessage(`❌ Failed to set strategy: ${e.message}`);
+    }
+  };
+
+  // Fast Order Handler
+  const handleManualOrder = async (side: "BUY" | "SELL", customStrat: string = "MANUAL_UI") => {
     setIsExecuting(true);
     setActionMessage(null);
     try {
-      const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3867.15);
-      const sl = side === "BUY" ? Number((curPrice * 0.996).toFixed(2)) : Number((curPrice * 1.004).toFixed(2));
-      const tp = side === "BUY" ? Number((curPrice * 1.008).toFixed(2)) : Number((curPrice * 0.992).toFixed(2));
+      const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3520.0);
+      const sl = side === "BUY" ? Number((curPrice - 3.50).toFixed(2)) : Number((curPrice + 3.50).toFixed(2));
+      const tp = side === "BUY" ? Number((curPrice + 7.00).toFixed(2)) : Number((curPrice - 7.00).toFixed(2));
 
-      const res = await sendManualMT5Order({
+      await sendManualMT5Order({
         symbol: "XAUUSD",
-        side: side,
+        side,
         lots: lotSize,
         price: curPrice,
         stop_loss: sl,
         take_profit: tp,
-        strategy: selectedStrategy,
+        strategy: customStrat,
       });
 
-      setActionMessage(`✅ Order queued: ${side} ${lotSize} Lots @ $${curPrice.toFixed(2)} (Signal ID: ${res.signal?.signal_id})`);
-      await loadChartData();
+      setActionMessage(`⚡ ${side} ${lotSize} Lots submitted to MT5 Terminal (TP: $${tp}, SL: $${sl})`);
+      setTimeout(() => setActionMessage(null), 4500);
+      loadData();
     } catch (err: any) {
-      setActionMessage(`❌ Order failed: ${err.message}`);
+      setActionMessage(`❌ Error: ${err.message}`);
     } finally {
       setIsExecuting(false);
     }
@@ -120,130 +182,273 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const handleCopyServerUrl = () => {
     navigator.clipboard.writeText("http://127.0.0.1:8000");
     setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
+    setTimeout(() => setCopiedUrl(false), 2000);
   };
 
-  const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3867.15);
-  const prevClose = liveTick?.prev_close || 3883.94;
-  const changeVal = curPrice - prevClose;
-  const changePct = (changeVal / prevClose) * 100;
-  const isPositive = changeVal >= 0;
+  const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3520.0);
+  const changePct = liveTick?.change_pct ?? -0.43;
+  const isPositive = changePct >= 0;
+
+  const equity = mt5Status?.account_info?.equity || tradesData.current_equity || 100000;
+  const balance = mt5Status?.account_info?.balance || tradesData.current_balance || 100000;
+  const netProfit = Number((equity - balance).toFixed(2));
+  const isNetProfitPositive = netProfit >= 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0e17", color: "#e2e8f0", padding: "16px 24px" }}>
-      {/* Top Navigation Strip */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", maxWidth: "1600px", margin: "0 auto", color: "#f8fafc" }}>
+      
+      {/* TOP HEADER */}
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "12px",
+        background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)",
+        border: "1px solid rgba(245, 158, 11, 0.25)",
+        borderRadius: "14px",
+        padding: "16px 20px",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <button
             onClick={onBackToMain}
             className="btn btn-outline"
-            style={{ fontSize: "11px", padding: "6px 12px", display: "flex", alignItems: "center", gap: "6px" }}
+            style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(255,255,255,0.15)" }}
           >
-            ← Back to Multi-Asset Dashboard
+            ← Back to Terminal
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "20px" }}>🪙</span>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "10px",
+              background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 4px 14px rgba(245, 158, 11, 0.4)",
+            }}>
+              <span style={{ fontSize: "20px" }}>🪙</span>
+            </div>
             <div>
-              <div style={{ fontSize: "16px", fontWeight: 800, color: "#f59e0b", letterSpacing: "0.5px" }}>
-                XAUUSD QUANT INTELLIGENCE & MT5 BRIDGE
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "20px", fontWeight: 900, color: "#fff", letterSpacing: "0.5px" }}>
+                  XAUUSD (GOLD SPOT)
+                </span>
+                <span style={{
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: "6px",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "#f59e0b",
+                  border: "1px solid rgba(245, 158, 11, 0.3)"
+                }}>
+                  MT5 LIVE ENGINE
+                </span>
+                <span style={{
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: "6px",
+                  background: mt5Status?.connected ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                  color: mt5Status?.connected ? "#34d399" : "#f87171",
+                  border: `1px solid ${mt5Status?.connected ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mt5Status?.connected ? "#34d399" : "#f87171" }}></span>
+                  {mt5Status?.connected ? "MT5 CONNECTED" : "AWAITING MT5 TERMINAL"}
+                </span>
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-                Gold Spot / U.S. Dollar • Institutional Micro-Scalper & Direct MT5 Terminal Execution
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
+                Institutional COMEX / ICE Real-Time Spot Data • Direct IPC Bridge Active
               </div>
             </div>
           </div>
         </div>
 
-        {/* Server & MT5 Connection Badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{
-            background: "rgba(16, 185, 129, 0.1)",
-            border: "1px solid rgba(16, 185, 129, 0.3)",
-            padding: "6px 14px",
-            borderRadius: "8px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            fontSize: "12px",
-            fontWeight: 700,
-            color: "#34d399"
-          }}>
-            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
-            Local Engine Active (Port 8000)
+        {/* Live Spot Price & Profit Metrics */}
+        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Gold Spot (USD)
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+              <span style={{ fontSize: "24px", fontWeight: 900, color: "#fff", fontFamily: "monospace" }}>
+                ${curPrice.toFixed(2)}
+              </span>
+              <span style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                color: isPositive ? "#34d399" : "#f87171",
+                display: "flex",
+                alignItems: "center"
+              }}>
+                {isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                {changePct >= 0 ? `+${changePct.toFixed(2)}%` : `${changePct.toFixed(2)}%`}
+              </span>
+            </div>
           </div>
 
-          <div style={{
-            background: mt5Status?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.12)",
-            border: `1px solid ${mt5Status?.connected ? "rgba(16, 185, 129, 0.4)" : "rgba(245, 158, 11, 0.4)"}`,
-            padding: "6px 14px",
-            borderRadius: "8px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            fontSize: "12px",
-            fontWeight: 700,
-            color: mt5Status?.connected ? "#34d399" : "#fbbf24"
-          }}>
-            <Activity size={14} className={mt5Status?.connected ? "animate-pulse" : ""} />
-            {mt5Status?.connected ? "MT5 Terminal: Connected (OK 200)" : "MT5 Terminal: Bridge Ready"}
+          <div style={{ borderLeft: "1px solid rgba(255,255,255,0.1)", paddingLeft: "20px" }}>
+            <div style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase" }}>
+              MT5 Demo Account Equity
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+              <span style={{ fontSize: "22px", fontWeight: 900, color: "#38bdf8", fontFamily: "monospace" }}>
+                ${equity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span style={{
+                fontSize: "11px",
+                fontWeight: 800,
+                padding: "2px 6px",
+                borderRadius: "4px",
+                background: isNetProfitPositive ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+                color: isNetProfitPositive ? "#34d399" : "#f87171"
+              }}>
+                {isNetProfitPositive ? `+$${netProfit}` : `-$${Math.abs(netProfit)}`}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Grid: Left Column (Chart + Analysis), Right Column (MT5 Execution & Telemetry) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: "20px" }}>
-        
-        {/* LEFT COLUMN: Chart + Ticker Bar + Multi-Strategy Grid */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          
-          {/* Gold Spot Ticker Card */}
-          <div style={{
-            background: "rgba(15, 23, 42, 0.75)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: "12px",
-            padding: "16px 20px",
+      {actionMessage && (
+        <div style={{
+          padding: "10px 16px",
+          borderRadius: "8px",
+          background: actionMessage.includes("❌") ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)",
+          border: `1px solid ${actionMessage.includes("❌") ? "rgba(239, 68, 68, 0.4)" : "rgba(16, 185, 129, 0.4)"}`,
+          fontSize: "13px",
+          fontWeight: 700,
+          color: actionMessage.includes("❌") ? "#fca5a5" : "#6ee7b7",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          {actionMessage}
+        </div>
+      )}
+
+      {/* NAVIGATION TABS */}
+      <div style={{
+        display: "flex",
+        gap: "8px",
+        background: "rgba(15, 23, 42, 0.6)",
+        padding: "6px",
+        borderRadius: "10px",
+        border: "1px solid rgba(255,255,255,0.06)",
+        overflowX: "auto"
+      }}>
+        <button
+          onClick={() => setActiveTab("ANALYSIS")}
+          style={{
+            padding: "8px 18px",
+            fontSize: "12px",
+            fontWeight: 800,
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            background: activeTab === "ANALYSIS" ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "transparent",
+            color: activeTab === "ANALYSIS" ? "#000" : "#94a3b8",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center"
-          }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                <span style={{ fontSize: "22px", fontWeight: 900, color: "#fff" }}>XAUUSD</span>
-                <span style={{ background: "rgba(245, 158, 11, 0.2)", color: "#f59e0b", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                  COMMODITY • COMEX
-                </span>
-                <span style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                  🟢 SESSION ACTIVE
-                </span>
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-                COMEX / MCX Session (09:00 - 23:30 IST) • Closes in 8h 12m
-              </div>
-            </div>
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.2s"
+          }}
+        >
+          <BarChart3 size={14} /> LIVE CHART & STRATEGY ANALYSIS
+        </button>
 
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "28px", fontWeight: 900, color: isPositive ? "#34d399" : "#ef4444", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
-                {isPositive ? <ArrowUpRight size={28} /> : <ArrowDownRight size={28} />}
-                ${curPrice.toFixed(2)}
-              </div>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: isPositive ? "#34d399" : "#ef4444" }}>
-                {isPositive ? "+" : ""}{changeVal.toFixed(2)} ({isPositive ? "+" : ""}{changePct.toFixed(2)}%) Today
-              </div>
-            </div>
-          </div>
+        <button
+          onClick={() => setActiveTab("MATRIX")}
+          style={{
+            padding: "8px 18px",
+            fontSize: "12px",
+            fontWeight: 800,
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            background: activeTab === "MATRIX" ? "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)" : "transparent",
+            color: activeTab === "MATRIX" ? "#000" : "#94a3b8",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.2s"
+          }}
+        >
+          <Layers size={14} /> STRATEGY PERFORMANCE MATRIX & ISOLATION
+        </button>
 
-          {/* Candlestick Chart with Vertical Zoom */}
-          <div style={{
-            background: "rgba(15, 23, 42, 0.75)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: "12px",
-            padding: "16px",
-            position: "relative"
-          }}>
-            {/* Timeframe selector toolbar */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-              <div style={{ display: "flex", gap: "6px" }}>
-                {["1s", "15s", "1m", "5m", "15m", "1h", "4h", "1D"].map((tf) => (
+        <button
+          onClick={() => setActiveTab("LEDGER")}
+          style={{
+            padding: "8px 18px",
+            fontSize: "12px",
+            fontWeight: 800,
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            background: activeTab === "LEDGER" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "transparent",
+            color: activeTab === "LEDGER" ? "#000" : "#94a3b8",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.2s"
+          }}
+        >
+          <Clock size={14} /> MT5 TRADE RECORD JOURNAL ({tradesData.total_trades})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("SETUP")}
+          style={{
+            padding: "8px 18px",
+            fontSize: "12px",
+            fontWeight: 800,
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            background: activeTab === "SETUP" ? "rgba(255, 255, 255, 0.15)" : "transparent",
+            color: activeTab === "SETUP" ? "#fff" : "#94a3b8",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.2s"
+          }}
+        >
+          <Zap size={14} /> MT5 TERMINAL EA SETUP
+        </button>
+      </div>
+
+      {/* TAB 1: CHART & LIVE ANALYSIS */}
+      {activeTab === "ANALYSIS" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: "16px" }}>
+          
+          {/* Main Chart Column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            
+            {/* Chart Toolbar & Timeframe Selection */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: "rgba(15, 23, 42, 0.7)",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              border: "1px solid rgba(255,255,255,0.06)",
+              flexWrap: "wrap",
+              gap: "8px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", marginRight: "4px" }}>
+                  TIMEFRAME:
+                </span>
+                {["1m", "5m", "15m", "30m", "1h", "4h", "1D", "1W"].map((tf) => (
                   <button
                     key={tf}
                     onClick={() => setTimeframe(tf)}
@@ -255,249 +460,480 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                       border: "none",
                       cursor: "pointer",
                       background: timeframe === tf ? "#f59e0b" : "rgba(255,255,255,0.05)",
-                      color: timeframe === tf ? "#000" : "#94a3b8"
+                      color: timeframe === tf ? "#000" : "#94a3b8",
                     }}
                   >
-                    {tf === "1s" ? "• 1s LIVE" : tf}
+                    {tf}
                   </button>
                 ))}
               </div>
 
-              <div style={{ fontSize: "11px", color: "var(--text-dim)", display: "flex", gap: "12px" }}>
-                <span>Drag Price Axis Vertically to Zoom Price</span>
-                <span>Scroll to Zoom Time</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "11px", color: "#34d399", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399" }}></span>
+                  1s Live Ticks
+                </span>
               </div>
             </div>
 
-            {/* Interactive TradingView Chart */}
-            <div style={{ height: "420px", width: "100%" }}>
+            {/* Candlestick Chart */}
+            <div style={{
+              height: "440px",
+              background: "#020617",
+              borderRadius: "12px",
+              border: "1px solid rgba(255,255,255,0.08)",
+              overflow: "hidden"
+            }}>
               <TradingViewChart
                 symbol="XAUUSD"
                 timeframe={timeframe}
                 candles={candles}
+                currentPrice={curPrice}
                 indicators={indicators}
-                targetPrice={curPrice * 1.008}
-                stopLossPrice={curPrice * 0.994}
-                entryPrice={curPrice}
-                direction="up"
-                showTargets={true}
               />
             </div>
-          </div>
 
-          {/* Subpage Navigation Tabs: Strategy Analysis vs Trade Ledger vs MT5 Setup */}
-          <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "4px" }}>
-            <button
-              onClick={() => setActiveTab("ANALYSIS")}
-              style={{
-                padding: "8px 16px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: activeTab === "ANALYSIS" ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                color: activeTab === "ANALYSIS" ? "#f59e0b" : "var(--text-dim)",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                borderBottom: activeTab === "ANALYSIS" ? "2px solid #f59e0b" : "none"
-              }}
-            >
-              ⚡ 6 Parallel Quant Strategies
-            </button>
-            <button
-              onClick={() => setActiveTab("LEDGER")}
-              style={{
-                padding: "8px 16px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: activeTab === "LEDGER" ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                color: activeTab === "LEDGER" ? "#f59e0b" : "var(--text-dim)",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                borderBottom: activeTab === "LEDGER" ? "2px solid #f59e0b" : "none"
-              }}
-            >
-              📖 XAUUSD Trade History & Positions ({positions.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("SETUP")}
-              style={{
-                padding: "8px 16px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: activeTab === "SETUP" ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                color: activeTab === "SETUP" ? "#f59e0b" : "var(--text-dim)",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                borderBottom: activeTab === "SETUP" ? "2px solid #f59e0b" : "none"
-              }}
-            >
-              🛠️ MT5 Connection Guide & EA Files
-            </button>
-          </div>
+            {/* Fast & Short-Trading Strategy: Fair Value Gap (FVG) Liquidity Hunter */}
+            {fvgData && (
+              <div style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+                borderRadius: "12px",
+                padding: "16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Flame size={16} color="#38bdf8" />
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>
+                      ⚡ FAST & SHORT STRATEGY: FAIR VALUE GAP (FVG) LIQUIDITY HUNTER
+                    </span>
+                    <span style={{
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      background: "rgba(56, 189, 248, 0.2)",
+                      color: "#38bdf8"
+                    }}>
+                      ⚡ ULTRA-SHORT (1m - 5m)
+                    </span>
+                  </div>
 
-          {/* TAB 1: 6 Quantitative Strategies */}
-          {activeTab === "ANALYSIS" && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-              {[
-                { id: "ULTRA_SCALPER_HIGH_VOL", name: "High-Volume Micro Scalper", horizon: "15s - 60s", target: "+$8.50", sl: "-$4.20", winRate: "78.4%", type: "BUY", desc: "Aggressive VWAP and order flow momentum burst." },
-                { id: "MACRO_TREND_SWING", name: "Macro Trend Riding Wave", horizon: "1h - 4h", target: "+$45.00", sl: "-$16.00", winRate: "71.2%", type: "BUY", desc: "Captures multi-hour momentum point expansion." },
-                { id: "UNANIMOUS_CONSENSUS_100PCT", name: "100% Directional Filter", horizon: "5m - 15m", target: "+$18.00", sl: "-$7.50", winRate: "84.6%", type: "BUY", desc: "Quadruple indicator consensus with zero false alarms." },
-                { id: "QLIB_GBDT_ALPHA", name: "Qlib GBDT Alpha Factor", horizon: "15m", target: "+$14.20", sl: "-$6.80", winRate: "74.0%", type: "SELL", desc: "Cross-sectional alpha and order flow regression." },
-                { id: "BREAKOUT_LIQUIDITY_HUNT", name: "Breakout Liquidity Sweep", horizon: "5m - 30m", target: "+$22.00", sl: "-$9.50", winRate: "69.5%", type: "BUY", desc: "Snipes liquidity sweeps above 20-period session High/Low." },
-                { id: "MEAN_REVERSION_BOLLINGER", name: "Mean-Reversion Bollinger", horizon: "1m - 5m", target: "+$11.00", sl: "-$5.40", winRate: "76.1%", type: "SELL", desc: "Exhaustion bounce when price pierces 2.5σ Bollinger bands." },
-              ].map((strat) => (
-                <div
-                  key={strat.id}
-                  style={{
-                    background: "rgba(15, 23, 42, 0.6)",
-                    border: "1px solid rgba(255, 255, 255, 0.06)",
-                    borderRadius: "10px",
-                    padding: "12px 14px",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between"
-                  }}
-                >
+                  <span style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    background: fvgData.signal === "BUY" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+                    color: fvgData.signal === "BUY" ? "#34d399" : "#f87171",
+                    border: `1px solid ${fvgData.signal === "BUY" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)"}`
+                  }}>
+                    {fvgData.signal} SIGNAL ({fvgData.confidence}% Conviction)
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
                   <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#f8fafc" }}>{strat.name}</span>
-                      <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", background: strat.type === "BUY" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)", color: strat.type === "BUY" ? "#34d399" : "#f87171" }}>
-                        {strat.type}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-dim)", marginBottom: "8px" }}>
-                      Horizon: {strat.horizon} • Win Rate: <strong style={{ color: "#38bdf8" }}>{strat.winRate}</strong>
-                    </div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4, marginBottom: "10px" }}>
-                      {strat.desc}
-                    </div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>ENTRY TARGET</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>${fvgData.entry_price.toFixed(2)}</div>
                   </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px" }}>
-                    <div style={{ fontSize: "10px" }}>
-                      <span style={{ color: "#34d399", fontWeight: 700 }}>TP: {strat.target}</span> • <span style={{ color: "#f87171", fontWeight: 700 }}>SL: {strat.sl}</span>
-                    </div>
-                    <button
-                      onClick={() => handleManualOrder(strat.type as any)}
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        background: "rgba(245, 158, 11, 0.2)",
-                        color: "#f59e0b",
-                        border: "1px solid rgba(245, 158, 11, 0.4)",
-                        borderRadius: "4px",
-                        cursor: "pointer"
-                      }}
-                    >
-                      Trigger Now
-                    </button>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>QUICK TP (PROFIT)</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#34d399" }}>${fvgData.take_profit.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>PROTECTIVE SL</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#f87171" }}>${fvgData.stop_loss.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>REWARD : RISK</div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#f59e0b" }}>{fvgData.reward_risk}x</div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* TAB 2: Dedicated XAUUSD Ledger */}
-          {activeTab === "LEDGER" && (
-            <div style={{ background: "rgba(15, 23, 42, 0.6)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)", padding: "14px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 800, marginBottom: "10px", color: "#f59e0b" }}>
-                Active & Executed Trades on XAUUSD
-              </div>
-              {positions.length === 0 ? (
-                <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)", fontSize: "12px" }}>
-                  No open trades on XAUUSD yet. Use the right panel to trigger an automated or manual test trade!
-                </div>
-              ) : (
-                <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ color: "var(--text-dim)", textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      <th style={{ padding: "8px" }}>Side</th>
-                      <th style={{ padding: "8px" }}>Lots / Qty</th>
-                      <th style={{ padding: "8px" }}>Entry Price</th>
-                      <th style={{ padding: "8px" }}>Current Price</th>
-                      <th style={{ padding: "8px" }}>Take Profit</th>
-                      <th style={{ padding: "8px" }}>Stop Loss</th>
-                      <th style={{ padding: "8px" }}>Unrealized P&L</th>
-                      <th style={{ padding: "8px" }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positions.map((p, idx) => (
-                      <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        <td style={{ padding: "8px", fontWeight: 700, color: p.side === "LONG" || p.side === "BUY" ? "#34d399" : "#f87171" }}>
-                          {p.side}
-                        </td>
-                        <td style={{ padding: "8px" }}>{p.quantity || 0.05}</td>
-                        <td style={{ padding: "8px" }}>${Number(p.entry_price).toFixed(2)}</td>
-                        <td style={{ padding: "8px" }}>${Number(p.current_price || curPrice).toFixed(2)}</td>
-                        <td style={{ padding: "8px", color: "#34d399" }}>${Number(p.take_profit || 0).toFixed(2)}</td>
-                        <td style={{ padding: "8px", color: "#f87171" }}>${Number(p.stop_loss || 0).toFixed(2)}</td>
-                        <td style={{ padding: "8px", fontWeight: 700, color: (p.unrealized_pnl || 0) >= 0 ? "#34d399" : "#f87171" }}>
-                          {(p.unrealized_pnl || 0) >= 0 ? "+" : ""}${Number(p.unrealized_pnl || 0).toFixed(2)}
-                        </td>
-                        <td style={{ padding: "8px" }}>
-                          <span style={{ padding: "2px 6px", borderRadius: "4px", background: "rgba(16,185,129,0.2)", color: "#34d399", fontSize: "10px" }}>
-                            {p.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: MT5 Setup Guide */}
-          {activeTab === "SETUP" && (
-            <div style={{ background: "rgba(15, 23, 42, 0.6)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.06)", padding: "16px" }}>
-              <div style={{ fontSize: "14px", fontWeight: 800, color: "#f59e0b", marginBottom: "8px" }}>
-                MetaTrader 5 Expert Advisor Connection Instructions
-              </div>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "16px" }}>
-                1. Ensure MT5 top toolbar <strong>Algo Trading</strong> button is <strong>GREEN</strong>.<br />
-                2. In MT5: <code>Tools -&gt; Options -&gt; Expert Advisors</code>, check <strong>Allow WebRequest</strong> and add:
-                <div style={{ display: "flex", gap: "8px", marginTop: "6px", alignItems: "center" }}>
-                  <code style={{ background: "#020617", padding: "6px 12px", borderRadius: "6px", color: "#38bdf8", fontSize: "12px" }}>
-                    http://127.0.0.1:8000
-                  </code>
-                  <button onClick={handleCopyServerUrl} className="btn btn-outline" style={{ padding: "6px 10px", fontSize: "11px" }}>
-                    {copiedUrl ? "✅ Copied" : "Copy URL"}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--text-muted)" }}>
+                  <span>
+                    Displacement Gap: <strong>${fvgData.gap_details?.gap_size || "1.80"} pts</strong> • Targets immediate institutional imbalance re-fill.
+                  </span>
+                  <button
+                    onClick={() => handleManualOrder(fvgData.signal === "BUY" ? "BUY" : "SELL", "GAP_FVG")}
+                    disabled={isExecuting}
+                    style={{
+                      padding: "6px 14px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: fvgData.signal === "BUY" ? "#10b981" : "#ef4444",
+                      color: "#fff"
+                    }}
+                  >
+                    ⚡ Fast 1-Click {fvgData.signal} (FVG Scalp)
                   </button>
                 </div>
-                3. Drag <strong>AutoBot_MT5_BridgeNew</strong> onto your <strong>XAUUSD, H1 or M1</strong> chart.<br />
-                4. Check <strong>Allow Algo Trading</strong> in the Common tab and click OK.
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Execution Controls & Account Telemetry */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            
+            {/* MT5 Demo Account Card */}
+            <div style={{
+              background: "rgba(15, 23, 42, 0.8)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "12px",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: "13px", fontWeight: 800, color: "#f8fafc", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Zap size={14} color="#f59e0b" />
+                  MT5 DEMO ACCOUNT TELEMETRY
+                </div>
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", background: "rgba(16,185,129,0.2)", color: "#34d399" }}>
+                  MetaQuotes-Demo
+                </span>
               </div>
 
-              <div style={{ display: "flex", gap: "10px" }}>
-                <a
-                  href="/AutoBot_MT5_BridgeNew.ex5"
-                  download
-                  className="btn btn-outline"
-                  style={{ padding: "8px 14px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}
+              <div style={{ background: "#020617", borderRadius: "8px", padding: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Account Login:</span>
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#fff" }}>115610153</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Server:</span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#38bdf8" }}>MetaQuotes-Demo</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Balance:</span>
+                  <span style={{ fontSize: "13px", fontWeight: 900, color: "#fff" }}>
+                    ${balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Live Equity:</span>
+                  <span style={{ fontSize: "14px", fontWeight: 900, color: "#34d399" }}>
+                    ${equity.toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Hedge Leverage:</span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b" }}>1:500 Direct</span>
+                </div>
+              </div>
+
+              {/* Lot size selector */}
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", marginBottom: "6px", display: "flex", justifyContent: "space-between" }}>
+                  <span>Order Volume (Lots):</span>
+                  <span style={{ color: "#f59e0b", fontWeight: 800 }}>{lotSize} Lots (~${(lotSize * curPrice).toFixed(0)} Notional)</span>
+                </div>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {[0.01, 0.05, 0.10, 0.25, 0.50].map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => setLotSize(size)}
+                      style={{
+                        flex: 1,
+                        padding: "5px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        borderRadius: "6px",
+                        border: "none",
+                        cursor: "pointer",
+                        background: lotSize === size ? "#f59e0b" : "rgba(255,255,255,0.05)",
+                        color: lotSize === size ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 1-Click Fast MT5 Execution Buttons */}
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => handleManualOrder("BUY")}
+                  disabled={isExecuting}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    borderRadius: "8px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#fff",
+                    boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
+                    transition: "all 0.2s"
+                  }}
                 >
-                  <Download size={13} /> Download AutoBot_MT5_BridgeNew.ex5
-                </a>
-                <a
-                  href="/AutoBot_MT5_BridgeNew.mq5"
-                  download
-                  className="btn btn-outline"
-                  style={{ padding: "8px 14px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px" }}
+                  ⚡ BUY XAUUSD
+                </button>
+                <button
+                  onClick={() => handleManualOrder("SELL")}
+                  disabled={isExecuting}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    borderRadius: "8px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                    color: "#fff",
+                    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)",
+                    transition: "all 0.2s"
+                  }}
                 >
-                  <Download size={13} /> Download Source Code (.mq5)
-                </a>
+                  ⚡ SELL XAUUSD
+                </button>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* RIGHT COLUMN: MT5 Execution Panel & Demo Account Telemetry */}
+            {/* Quick Strategy Isolation Controller in Sidebar */}
+            <div style={{
+              background: "rgba(15, 23, 42, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "12px",
+              padding: "14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px"
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
+                <Target size={14} color="#38bdf8" />
+                ACTIVE STRATEGY ISOLATION
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                Test each strategy individually to observe its solo win-rate and PnL:
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                <button
+                  onClick={() => handleIsolateStrategy("ALL")}
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    borderRadius: "6px",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    background: isolatedStrategyId === "ALL" ? "rgba(245, 158, 11, 0.2)" : "rgba(255,255,255,0.03)",
+                    color: isolatedStrategyId === "ALL" ? "#f59e0b" : "#94a3b8",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}
+                >
+                  <span>🚀 Run All 6 Strategies Together</span>
+                  {isolatedStrategyId === "ALL" && <CheckCircle2 size={12} color="#f59e0b" />}
+                </button>
+
+                {[
+                  { id: "GAP_FVG", name: "⚡ Fair Value Gap Hunter", horizon: "Ultra-Short (1m-5m)" },
+                  { id: "SCALPER_EMA", name: "⚡ High-Volume EMA Scalper", horizon: "Ultra-Short (1m-5m)" },
+                  { id: "BOLLINGER_REV", name: "🎯 Bollinger Mean Reversion", horizon: "Medium (15m-1h)" },
+                  { id: "ORDER_BLOCK", name: "🎯 Order Block Breakout", horizon: "Medium (15m-1h)" },
+                  { id: "CONSENSUS_ML", name: "🎯 Machine Learning Consensus", horizon: "Medium (15m-1h)" },
+                  { id: "SWING_FLOW", name: "🌊 Trend Swing Flow", horizon: "Long Swing (4h-1D)" },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleIsolateStrategy(s.id)}
+                    style={{
+                      padding: "6px 10px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      borderRadius: "6px",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      background: isolatedStrategyId === s.id ? "rgba(56, 189, 248, 0.2)" : "rgba(255,255,255,0.03)",
+                      color: isolatedStrategyId === s.id ? "#38bdf8" : "#94a3b8",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div>
+                      <div>{s.name}</div>
+                      <div style={{ fontSize: "9px", color: "var(--text-dim)" }}>{s.horizon}</div>
+                    </div>
+                    {isolatedStrategyId === s.id && <Lock size={12} color="#38bdf8" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: STRATEGY PERFORMANCE MATRIX */}
+      {activeTab === "MATRIX" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           
-          {/* MT5 Demo Account Card */}
+          {/* Header Card */}
+          <div style={{
+            background: "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "12px",
+            padding: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}>
+            <div>
+              <div style={{ fontSize: "16px", fontWeight: 900, color: "#fff" }}>
+                QUANTITATIVE STRATEGY PERFORMANCE MATRIX & ISOLATION
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
+                Real-time breakdown of profit, loss, win rate, and profit factor for each individual strategy running on XAUUSD MT5.
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Active Mode:</span>
+              <span style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                padding: "4px 10px",
+                borderRadius: "6px",
+                background: isolatedStrategyId === "ALL" ? "rgba(245, 158, 11, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                color: isolatedStrategyId === "ALL" ? "#f59e0b" : "#38bdf8"
+              }}>
+                {isolatedStrategyId === "ALL" ? "ALL 6 STRATEGIES ACTIVE" : `ISOLATED: ${isolatedStrategyId}`}
+              </span>
+            </div>
+          </div>
+
+          {/* Strategy Cards Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px" }}>
+            {strategyMatrix.map((s) => (
+              <div
+                key={s.strategy_id}
+                style={{
+                  background: "rgba(15, 23, 42, 0.75)",
+                  border: s.is_isolated ? "1px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  boxShadow: s.is_isolated ? "0 0 20px rgba(56, 189, 248, 0.15)" : "none"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>{s.name}</div>
+                    <div style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: s.horizon.includes("Ultra-Short") ? "#f59e0b" : s.horizon.includes("Medium") ? "#38bdf8" : "#a855f7",
+                      marginTop: "2px"
+                    }}>
+                      {s.horizon} • Base: {s.default_tf}
+                    </div>
+                  </div>
+
+                  <span style={{
+                    fontSize: "9px",
+                    fontWeight: 800,
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    background: s.is_active ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.05)",
+                    color: s.is_active ? "#34d399" : "#64748b"
+                  }}>
+                    {s.is_active ? "ACTIVE" : "STANDBY"}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                  {s.description}
+                </div>
+
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "6px",
+                  background: "#020617",
+                  padding: "10px",
+                  borderRadius: "8px"
+                }}>
+                  <div>
+                    <div style={{ fontSize: "9px", color: "var(--text-dim)" }}>TRADES</div>
+                    <div style={{ fontSize: "12px", fontWeight: 800, color: "#fff" }}>{s.total_trades}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "9px", color: "var(--text-dim)" }}>WIN RATE</div>
+                    <div style={{ fontSize: "12px", fontWeight: 800, color: "#34d399" }}>{s.win_rate}%</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "9px", color: "var(--text-dim)" }}>NET PNL</div>
+                    <div style={{ fontSize: "12px", fontWeight: 800, color: s.net_pnl >= 0 ? "#34d399" : "#f87171" }}>
+                      ${s.net_pnl.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", marginTop: "auto" }}>
+                  <button
+                    onClick={() => handleIsolateStrategy(s.strategy_id)}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: s.is_isolated ? "#38bdf8" : "rgba(255,255,255,0.08)",
+                      color: s.is_isolated ? "#000" : "#fff",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    {s.is_isolated ? "✓ Isolating Solo" : "Isolate & Test Solo"}
+                  </button>
+                  <button
+                    onClick={() => handleManualOrder("BUY", s.strategy_id)}
+                    style={{
+                      padding: "8px 12px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: "rgba(16,185,129,0.2)",
+                      color: "#34d399"
+                    }}
+                  >
+                    Test BUY
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: MT5 TRADE RECORD JOURNAL */}
+      {activeTab === "LEDGER" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          
+          {/* Filters Bar: Timeframes, Periods, Strategies */}
           <div style={{
             background: "rgba(15, 23, 42, 0.8)",
             border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -507,167 +943,265 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             flexDirection: "column",
             gap: "12px"
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: "13px", fontWeight: 800, color: "#f8fafc", display: "flex", alignItems: "center", gap: "6px" }}>
-                <Zap size={14} color="#f59e0b" />
-                MT5 DEMO ACCOUNT TELEMETRY
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
+                <Filter size={15} color="#f59e0b" />
+                FILTER MT5 TRADES BY TIMEFRAME & PERIOD
               </div>
-              <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", background: "rgba(16,185,129,0.2)", color: "#34d399" }}>
-                OctaFX / MetaQuotes
-              </span>
-            </div>
 
-            <div style={{ background: "#020617", borderRadius: "8px", padding: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Account Login:</span>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#fff" }}>115610153</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Broker Server:</span>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#38bdf8" }}>MetaQuotes-Demo</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Balance:</span>
-                <span style={{ fontSize: "13px", fontWeight: 900, color: "#34d399" }}>$100,000.00 USD</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Equity / Free Margin:</span>
-                <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>$100,000.00 USD</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Account Leverage:</span>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b" }}>1:500 Hedge Mode</span>
-              </div>
-            </div>
-
-            {/* Lot size selector */}
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", marginBottom: "6px", display: "flex", justifyContent: "space-between" }}>
-                <span>Order Volume (Lots):</span>
-                <span style={{ color: "#f59e0b", fontWeight: 800 }}>{lotSize} Lots (~${(lotSize * curPrice).toFixed(0)} Notional)</span>
-              </div>
-              <div style={{ display: "flex", gap: "6px" }}>
-                {[0.01, 0.05, 0.10, 0.25, 0.50].map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setLotSize(size)}
-                    style={{
-                      flex: 1,
-                      padding: "5px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      borderRadius: "6px",
-                      border: "none",
-                      cursor: "pointer",
-                      background: lotSize === size ? "#f59e0b" : "rgba(255,255,255,0.05)",
-                      color: lotSize === size ? "#000" : "#94a3b8"
-                    }}
-                  >
-                    {size}
-                  </button>
-                ))}
+              {/* Summary Stats Strip */}
+              <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Total: </span>
+                  <strong style={{ color: "#fff" }}>{tradesData.total_trades}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Wins: </span>
+                  <strong style={{ color: "#34d399" }}>{tradesData.wins}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Losses: </span>
+                  <strong style={{ color: "#f87171" }}>{tradesData.losses}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Win Rate: </span>
+                  <strong style={{ color: "#38bdf8" }}>{tradesData.win_rate}%</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Net PnL: </span>
+                  <strong style={{ color: tradesData.net_pnl >= 0 ? "#34d399" : "#f87171" }}>
+                    ${tradesData.net_pnl.toFixed(2)} USD
+                  </strong>
+                </div>
               </div>
             </div>
 
-            {/* 1-Click Fast MT5 Execution Buttons */}
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                onClick={() => handleManualOrder("BUY")}
-                disabled={isExecuting}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  fontSize: "13px",
-                  fontWeight: 900,
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "#fff",
-                  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
-                  transition: "all 0.2s"
-                }}
-              >
-                ⚡ BUY XAUUSD
-              </button>
-              <button
-                onClick={() => handleManualOrder("SELL")}
-                disabled={isExecuting}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  fontSize: "13px",
-                  fontWeight: 900,
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
-                  color: "#fff",
-                  boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)",
-                  transition: "all 0.2s"
-                }}
-              >
-                ⚡ SELL XAUUSD
-              </button>
-            </div>
-
-            {actionMessage && (
-              <div style={{
-                background: actionMessage.startsWith("✅") ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                border: `1px solid ${actionMessage.startsWith("✅") ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
-                padding: "8px 12px",
-                borderRadius: "6px",
-                fontSize: "11px",
-                color: actionMessage.startsWith("✅") ? "#34d399" : "#f87171"
-              }}>
-                {actionMessage}
+            {/* Filter Pills */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
+              
+              {/* Timeframe Filter */}
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-dim)", marginBottom: "6px" }}>
+                  TIMEFRAME (M1, M5, H1, H4, DAYS, MONTH, WEEK):
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                  {["all", "m1", "m5", "15m", "h1", "h4", "days", "week", "month"].map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setLedgerTimeframe(tf)}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        borderRadius: "4px",
+                        border: "none",
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                        background: ledgerTimeframe === tf ? "#f59e0b" : "rgba(255,255,255,0.05)",
+                        color: ledgerTimeframe === tf ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
+
+              {/* Period Filter */}
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-dim)", marginBottom: "6px" }}>
+                  PERIOD HORIZON:
+                </div>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  {["all", "today", "week", "month"].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setLedgerPeriod(p)}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        borderRadius: "4px",
+                        border: "none",
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                        background: ledgerPeriod === p ? "#38bdf8" : "rgba(255,255,255,0.05)",
+                        color: ledgerPeriod === p ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      {p === "all" ? "All Time" : p === "today" ? "Today (Day)" : p === "week" ? "This Week" : "This Month"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Strategy Filter */}
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-dim)", marginBottom: "6px" }}>
+                  STRATEGY FILTER:
+                </div>
+                <select
+                  value={ledgerStrategy}
+                  onChange={(e) => setLedgerStrategy(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "4px",
+                    color: "#fff",
+                    padding: "4px 8px",
+                    fontSize: "11px"
+                  }}
+                >
+                  <option value="all">All Strategies</option>
+                  <option value="GAP_FVG">Fair Value Gap Hunter (Ultra-Short)</option>
+                  <option value="SCALPER_EMA">High-Volume EMA Scalper (Ultra-Short)</option>
+                  <option value="BOLLINGER_REV">Bollinger Mean-Reversion (Medium)</option>
+                  <option value="ORDER_BLOCK">Order Block Breakout (Medium)</option>
+                  <option value="CONSENSUS_ML">ML Consensus (Medium)</option>
+                  <option value="SWING_FLOW">Macro Swing Flow (Long)</option>
+                </select>
+              </div>
+            </div>
           </div>
 
-          {/* Real-time Technical Signal Summary */}
+          {/* Recorded Trades Table */}
           <div style={{
-            background: "rgba(15, 23, 42, 0.8)",
+            background: "rgba(15, 23, 42, 0.75)",
             border: "1px solid rgba(255, 255, 255, 0.08)",
             borderRadius: "12px",
-            padding: "16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px"
+            overflow: "hidden"
           }}>
-            <div style={{ fontSize: "12px", fontWeight: 800, color: "#f8fafc" }}>
-              XAUUSD TECHNICAL SIGNAL METRICS
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <div style={{ background: "#020617", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>EMA 9 (Fast):</div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#38bdf8" }}>
-                  ${indicators?.ema_9 ? indicators.ema_9[indicators.ema_9.length - 1]?.value?.toFixed(2) : (curPrice * 0.999).toFixed(2)}
-                </div>
-              </div>
-              <div style={{ background: "#020617", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>EMA 50 (Slow):</div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#a855f7" }}>
-                  ${indicators?.ema_50 ? indicators.ema_50[indicators.ema_50.length - 1]?.value?.toFixed(2) : (curPrice * 0.997).toFixed(2)}
-                </div>
-              </div>
-              <div style={{ background: "#020617", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>RSI (14):</div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#34d399" }}>
-                  56.8 (Bullish Momentum)
-                </div>
-              </div>
-              <div style={{ background: "#020617", padding: "8px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>Trend Bias:</div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#f59e0b" }}>
-                  STRONG BUY (82%)
-                </div>
-              </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "rgba(30, 41, 59, 0.8)", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "var(--text-dim)" }}>
+                    <th style={{ padding: "10px 12px" }}>TICKET #</th>
+                    <th style={{ padding: "10px 12px" }}>EXEC TIME</th>
+                    <th style={{ padding: "10px 12px" }}>SYMBOL</th>
+                    <th style={{ padding: "10px 12px" }}>SIDE</th>
+                    <th style={{ padding: "10px 12px" }}>LOTS</th>
+                    <th style={{ padding: "10px 12px" }}>ENTRY PRICE</th>
+                    <th style={{ padding: "10px 12px" }}>CURRENT SPOT</th>
+                    <th style={{ padding: "10px 12px" }}>SL / TP</th>
+                    <th style={{ padding: "10px 12px" }}>STRATEGY</th>
+                    <th style={{ padding: "10px 12px" }}>TIME HORIZON</th>
+                    <th style={{ padding: "10px 12px", textAlign: "right" }}>NET PNL ($)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradesData.trades.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
+                        No trades found matching the selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    tradesData.trades.map((t) => (
+                      <tr key={t.ticket} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#38bdf8", fontFamily: "monospace" }}>
+                          #{t.ticket}
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>
+                          {t.executed_at}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#fff" }}>
+                          {t.symbol}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontWeight: 800,
+                            fontSize: "10px",
+                            background: t.side === "BUY" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+                            color: t.side === "BUY" ? "#34d399" : "#f87171"
+                          }}>
+                            {t.side}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 12px", fontWeight: 700 }}>
+                          {t.lots.toFixed(2)}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>
+                          ${t.executed_price.toFixed(2)}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#fff" }}>
+                          ${t.current_price.toFixed(2)}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontSize: "10px", color: "var(--text-dim)" }}>
+                          ${t.sl.toFixed(1)} / ${t.tp.toFixed(1)}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontWeight: 700, color: "#f59e0b" }}>
+                          {t.strategy_name || t.strategy}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            background: t.horizon.includes("Ultra-Short") ? "rgba(245,158,11,0.15)" : "rgba(56,189,248,0.15)",
+                            color: t.horizon.includes("Ultra-Short") ? "#f59e0b" : "#38bdf8"
+                          }}>
+                            {t.horizon}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 900, fontFamily: "monospace", color: t.pnl >= 0 ? "#34d399" : "#f87171" }}>
+                          {t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-
         </div>
-      </div>
+      )}
+
+      {/* TAB 4: SETUP GUIDE */}
+      {activeTab === "SETUP" && (
+        <div style={{ background: "rgba(15, 23, 42, 0.75)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.08)", padding: "20px" }}>
+          <div style={{ fontSize: "15px", fontWeight: 900, color: "#f59e0b", marginBottom: "8px" }}>
+            MetaTrader 5 Expert Advisor Connection & Setup Instructions
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.7, marginBottom: "16px" }}>
+            1. Ensure the top MT5 toolbar <strong>Algo Trading</strong> button is <strong>GREEN</strong> (Play icon).<br />
+            2. The EA reads direct file signals from <code>MQL5/Files/autobot_orders.txt</code> with zero network dependency.<br />
+            3. WebRequest URL is also configured at:
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", alignItems: "center" }}>
+              <code style={{ background: "#020617", padding: "6px 12px", borderRadius: "6px", color: "#38bdf8", fontSize: "12px" }}>
+                http://127.0.0.1:8000
+              </code>
+              <button onClick={handleCopyServerUrl} className="btn btn-outline" style={{ padding: "6px 10px", fontSize: "11px" }}>
+                {copiedUrl ? "✅ Copied" : "Copy URL"}
+              </button>
+            </div>
+            4. Drag <strong>AutoBot_MT5_BridgeNew</strong> onto your <strong>XAUUSD, M1</strong> chart.<br />
+            5. In the Common tab, ensure <strong>Allow Algo Trading</strong> is checked.
+          </div>
+
+          <div style={{ display: "flex", gap: "10px" }}>
+            <a
+              href="/AutoBot_MT5_BridgeNew.ex5"
+              download
+              className="btn btn-outline"
+              style={{ padding: "8px 14px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px", background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}
+            >
+              <Download size={13} /> Download AutoBot_MT5_BridgeNew.ex5
+            </a>
+            <a
+              href="/AutoBot_MT5_BridgeNew.mq5"
+              download
+              className="btn btn-outline"
+              style={{ padding: "8px 14px", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <Download size={13} /> Download Source Code (.mq5)
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

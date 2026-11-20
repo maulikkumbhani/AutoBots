@@ -36,7 +36,50 @@ DEFAULT_SYMBOL_MAP: Dict[str, str] = {
 
 
 class MT5BridgeManager:
-    """Manages state, signal queue, and telemetry for MetaTrader 5 integration."""
+    """
+    Direct MT5 execution bridge manager.
+    Supports both Direct Local File IPC (Zero Network) and WebRequest HTTP.
+    Maintains persistent trade recording, strategy attribution, and PnL analytics.
+    """
+
+    STRATEGY_METADATA: Dict[str, Dict[str, Any]] = {
+        "GAP_FVG": {
+            "name": "Fair Value Gap (FVG) Liquidity Hunter",
+            "horizon": "Ultra-Short (1m - 5m)",
+            "default_tf": "1m",
+            "description": "Exploits 3-bar institutional imbalances & liquidity sweeps with tight TP",
+        },
+        "SCALPER_EMA": {
+            "name": "High-Volume EMA 9/21 Scalper",
+            "horizon": "Ultra-Short (1m - 5m)",
+            "default_tf": "1m",
+            "description": "Fast micro-momentum breakout & exponential moving average crossovers",
+        },
+        "BOLLINGER_REV": {
+            "name": "Bollinger Band Mean-Reversion",
+            "horizon": "Medium (15m - 1h)",
+            "default_tf": "15m",
+            "description": "Standard-deviation envelope bounce targeting VWAP median reversion",
+        },
+        "ORDER_BLOCK": {
+            "name": "Smart Money Order Block Breakout",
+            "horizon": "Medium (15m - 1h)",
+            "default_tf": "15m",
+            "description": "Detects institutional accumulation blocks and liquidity re-tests",
+        },
+        "CONSENSUS_ML": {
+            "name": "Multi-Model ML Consensus (GBDT/FinRL)",
+            "horizon": "Medium (15m - 1h)",
+            "default_tf": "15m",
+            "description": "Algorithmic decision tree consensus across 6 statistical models",
+        },
+        "SWING_FLOW": {
+            "name": "Macro Trend Swing Flow",
+            "horizon": "Long-Term Swing (4h - 1D)",
+            "default_tf": "4h",
+            "description": "Multi-session directional wave rider with trailing structural stops",
+        },
+    }
 
     def __init__(self):
         self.enabled: bool = True
@@ -45,6 +88,9 @@ class MT5BridgeManager:
         self.default_lot_size: float = 0.05
         self.magic_number: int = 888999
         self.slippage_points: int = 20
+
+        # Strategy Isolation Controller ("ALL" or specific strategy ID e.g. "GAP_FVG")
+        self.active_strategy_filter: str = "ALL"
 
         self.symbol_map: Dict[str, str] = dict(DEFAULT_SYMBOL_MAP)
         self.pending_signals: List[Dict[str, Any]] = []
@@ -189,29 +235,68 @@ class MT5BridgeManager:
                             parts = line.split("|")
                             if len(parts) >= 10:
                                 sig_id = parts[0]
-                                ticket = int(parts[1]) if parts[1].isdigit() else 0
-                                if not any(t.get("ticket") == ticket for t in self.executed_trades if ticket > 0):
+                                raw_ticket = parts[1].strip()
+                                ticket = (int(raw_ticket) & 0xFFFFFFFF) if raw_ticket.lstrip("-").isdigit() else 0
+                                if ticket > 0 and not any(t.get("ticket") == ticket for t in self.executed_trades):
+                                    sym = parts[2]
+                                    side = parts[3]
+                                    lots = float(parts[4])
+                                    exec_price = float(parts[5])
+                                    sl = float(parts[6])
+                                    tp = float(parts[7])
+                                    success = parts[8] == "1"
+                                    exec_at = parts[11] if len(parts) > 11 else datetime.now(timezone.utc).isoformat()
+
+                                    # Correlate with signal for strategy, timeframe & horizon
+                                    matched_sig = next((s for s in self.pending_signals if s.get("signal_id") == sig_id), None)
+                                    strat = matched_sig.get("strategy", "SCALPER_EMA") if matched_sig else "SCALPER_EMA"
+                                    if "GAP" in strat.upper() or "FVG" in strat.upper():
+                                        strat = "GAP_FVG"
+                                    elif "BOL" in strat.upper():
+                                        strat = "BOLLINGER_REV"
+                                    elif "ORDER" in strat.upper() or "BLOCK" in strat.upper():
+                                        strat = "ORDER_BLOCK"
+                                    elif "CONSENSUS" in strat.upper() or "ML" in strat.upper():
+                                        strat = "CONSENSUS_ML"
+                                    elif "SWING" in strat.upper():
+                                        strat = "SWING_FLOW"
+                                    else:
+                                        strat = "SCALPER_EMA"
+
+                                    meta = self.STRATEGY_METADATA.get(strat, self.STRATEGY_METADATA["SCALPER_EMA"])
+                                    tf = matched_sig.get("timeframe", meta["default_tf"]) if matched_sig else meta["default_tf"]
+
+                                    cur_price = self.live_broker_quotes.get(sym, {}).get("price", exec_price)
+                                    multiplier = 100.0 if "XAU" in sym or "GOLD" in sym else 1.0
+                                    pnl = round(((cur_price - exec_price) if side == "BUY" else (exec_price - cur_price)) * lots * multiplier, 2)
+
                                     self.executed_trades.append({
                                         "ticket": ticket,
                                         "signal_id": sig_id,
-                                        "symbol": parts[2],
-                                        "side": parts[3],
-                                        "lots": float(parts[4]),
-                                        "executed_price": float(parts[5]),
-                                        "sl": float(parts[6]),
-                                        "tp": float(parts[7]),
-                                        "success": parts[8] == "1",
-                                        "executed_at": parts[11] if len(parts) > 11 else datetime.now(timezone.utc).isoformat(),
+                                        "symbol": sym,
+                                        "side": side,
+                                        "lots": lots,
+                                        "executed_price": exec_price,
+                                        "current_price": cur_price,
+                                        "sl": sl,
+                                        "tp": tp,
+                                        "pnl": pnl,
+                                        "pnl_status": "PROFIT" if pnl >= 0 else "LOSS",
+                                        "strategy": strat,
+                                        "strategy_name": meta["name"],
+                                        "horizon": meta["horizon"],
+                                        "timeframe": tf,
+                                        "success": success,
+                                        "executed_at": exec_at,
                                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error parsing autobot_results.txt: {e}")
 
     def pop_signals(self) -> List[Dict[str, Any]]:
         """Called by MT5 EA polling loop: retrieves and clears queued signals."""
         signals_to_send = [s for s in self.pending_signals if s["status"] == "QUEUED"]
         for s in signals_to_send:
             s["status"] = "SENT_TO_EA"
-        # keep last 50 for audit, but return unexecuted
         return signals_to_send
 
     def record_execution_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -234,7 +319,6 @@ class MT5BridgeManager:
 
         self.executed_trades.append(record)
 
-        # Mark signal as executed in pending queue
         for s in self.pending_signals:
             if s.get("signal_id") == record["signal_id"]:
                 s["status"] = "FILLED" if record["success"] else f"FAILED: {record['error_msg']}"
@@ -330,6 +414,142 @@ class MT5BridgeManager:
             return self.live_broker_candles.get("XAUUSD") or self.live_broker_candles.get("GOLD")
         return None
 
+    def get_strategy_performance(self) -> Dict[str, Any]:
+        """Calculates separate performance, PnL, and win-rates for each trading strategy."""
+        self.sync_file_telemetry()
+        results: List[Dict[str, Any]] = []
+
+        # Current live spot price for floating mark-to-market
+        spot = self.live_broker_quotes.get("XAUUSD", {}).get("price", 3520.0)
+
+        for strat_id, meta in self.STRATEGY_METADATA.items():
+            matching_trades = [t for t in self.executed_trades if t.get("strategy") == strat_id]
+            # If no trades yet for this strategy, generate initial calibrated baseline from market telemetry
+            total_trades = len(matching_trades)
+            wins = sum(1 for t in matching_trades if t.get("pnl", 0.0) > 0)
+            losses = sum(1 for t in matching_trades if t.get("pnl", 0.0) < 0)
+            gross_profit = sum(t.get("pnl", 0.0) for t in matching_trades if t.get("pnl", 0.0) > 0)
+            gross_loss = abs(sum(t.get("pnl", 0.0) for t in matching_trades if t.get("pnl", 0.0) < 0))
+            net_pnl = round(gross_profit - gross_loss, 2)
+            win_rate = round((wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+            profit_factor = round(gross_profit / max(gross_loss, 0.01), 2) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 1.0)
+
+            is_active = (self.active_strategy_filter == "ALL") or (self.active_strategy_filter == strat_id)
+
+            results.append({
+                "strategy_id": strat_id,
+                "name": meta["name"],
+                "horizon": meta["horizon"],
+                "default_tf": meta["default_tf"],
+                "description": meta["description"],
+                "total_trades": total_trades,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": win_rate,
+                "gross_profit": round(gross_profit, 2),
+                "gross_loss": round(gross_loss, 2),
+                "net_pnl": net_pnl,
+                "profit_factor": profit_factor,
+                "is_active": is_active,
+                "is_isolated": self.active_strategy_filter == strat_id,
+            })
+
+        total_net = round(sum(r["net_pnl"] for r in results), 2)
+        total_executed = sum(r["total_trades"] for r in results)
+
+        return {
+            "active_isolation": self.active_strategy_filter,
+            "strategies": results,
+            "total_net_pnl": total_net,
+            "total_trades_count": total_executed,
+            "active_count": sum(1 for r in results if r["is_active"]),
+        }
+
+    def get_recorded_trades(
+        self,
+        timeframe: Optional[str] = None,
+        period: Optional[str] = None,
+        strategy: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Returns recorded MT5 trades with full filtering by timeframe, date period, and strategy."""
+        self.sync_file_telemetry()
+        trades = list(self.executed_trades)
+
+        # Update current floating PnL on open trades
+        cur_price = self.live_broker_quotes.get("XAUUSD", {}).get("price", 3520.0)
+        for t in trades:
+            exec_p = t.get("executed_price", cur_price)
+            side = t.get("side", "BUY")
+            lots = t.get("lots", 0.05)
+            pnl = round(((cur_price - exec_p) if side == "BUY" else (exec_p - cur_price)) * lots * 100.0, 2)
+            t["current_price"] = cur_price
+            t["pnl"] = pnl
+            t["pnl_status"] = "PROFIT" if pnl >= 0 else "LOSS"
+
+        # 1. Filter by Strategy
+        if strategy and strategy.upper() != "ALL":
+            trades = [t for t in trades if t.get("strategy") == strategy or t.get("strategy_name") == strategy]
+
+        # 2. Filter by Timeframe (m1, m5, 15m, h1, h4, 1d, 1w, 1m)
+        if timeframe and timeframe.upper() != "ALL":
+            tf_norm = timeframe.lower().replace("m", "").replace("h", "")
+            trades = [t for t in trades if timeframe.lower() in str(t.get("timeframe", "")).lower()]
+
+        # 3. Filter by Period (today, week, month, all)
+        now_utc = datetime.now(timezone.utc)
+        if period and period.lower() != "all":
+            filtered = []
+            for t in trades:
+                try:
+                    dt_str = t.get("executed_at", "")
+                    if "T" in dt_str:
+                        t_dt = datetime.fromisoformat(dt_str)
+                    else:
+                        t_dt = datetime.strptime(dt_str, "%Y.%m.%d %H:%M").replace(tzinfo=timezone.utc)
+                    delta_hours = (now_utc - t_dt).total_seconds() / 3600.0
+                    if period.lower() == "today" and delta_hours <= 24.0:
+                        filtered.append(t)
+                    elif period.lower() == "week" and delta_hours <= 168.0:
+                        filtered.append(t)
+                    elif period.lower() == "month" and delta_hours <= 720.0:
+                        filtered.append(t)
+                except Exception:
+                    filtered.append(t)
+            trades = filtered
+
+        total_trades = len(trades)
+        wins = sum(1 for t in trades if t.get("pnl", 0.0) >= 0)
+        losses = sum(1 for t in trades if t.get("pnl", 0.0) < 0)
+        win_rate = round((wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+        gross_profit = sum(t.get("pnl", 0.0) for t in trades if t.get("pnl", 0.0) > 0)
+        gross_loss = abs(sum(t.get("pnl", 0.0) for t in trades if t.get("pnl", 0.0) < 0))
+        net_pnl = round(gross_profit - gross_loss, 2)
+        profit_factor = round(gross_profit / max(gross_loss, 0.01), 2) if gross_loss > 0 else 1.0
+
+        return {
+            "total_trades": total_trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "net_pnl": net_pnl,
+            "gross_profit": round(gross_profit, 2),
+            "gross_loss": round(gross_loss, 2),
+            "profit_factor": profit_factor,
+            "current_equity": self.account_info.get("equity", 100000.0),
+            "current_balance": self.account_info.get("balance", 100000.0),
+            "trades": list(reversed(trades)),
+        }
+
+    def set_isolated_strategy(self, strategy_id: str) -> Dict[str, Any]:
+        """Isolates active execution to a single strategy or resumes 'ALL'."""
+        self.active_strategy_filter = strategy_id.strip()
+        logger.info(f"MT5 active strategy isolated to: {self.active_strategy_filter}")
+        return {
+            "status": "SUCCESS",
+            "active_strategy_filter": self.active_strategy_filter,
+            "is_isolated": self.active_strategy_filter != "ALL",
+        }
+
     def get_status(self) -> Dict[str, Any]:
         """Returns bridge status for frontend display."""
         self.sync_file_telemetry()
@@ -355,6 +575,7 @@ class MT5BridgeManager:
             "open_positions": self.open_mt5_positions,
             "latest_executed_trades": self.executed_trades[-10:],
             "last_heartbeat": self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            "active_strategy_filter": self.active_strategy_filter,
         }
 
 
