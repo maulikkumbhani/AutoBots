@@ -591,6 +591,16 @@ export interface VolumeOptimizationData {
   sizing_reasoning: string;
 }
 
+export async function closeSingleMT5Trade(ticket: number | string, reason: string = "MANUAL_UI_CLOSE"): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/close-trade`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket, reason }),
+  });
+  if (!res.ok) throw new Error("Failed to close MT5 trade");
+  return res.json();
+}
+
 export async function closeAllMT5Positions(): Promise<any> {
   const res = await fetch(`${API_BASE}/mt5/bridge/close-all`, {
     method: "POST",

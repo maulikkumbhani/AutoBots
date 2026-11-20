@@ -24,8 +24,8 @@ input group "=== Micro-Profit Scalping & Risk Guards ==="
 input double   InpTakeProfitPts     = 2.20;                    // Micro-Scalp TP in USD ($2.20 on Gold)
 input double   InpStopLossPts       = 1.50;                    // Micro-Scalp SL in USD ($1.50 on Gold)
 input double   InpSubDollarProfit   = 0.50;                    // Sub-Dollar Micro-Burst Quick Profit Harvest ($0.50)
-input double   InpQuickProfitClose  = 10.00;                   // Standard Auto-Harvest Profit in USD per trade
-input double   InpMaxLossClose      = 12.50;                   // Hard Stop Loss in USD per trade
+input double   InpQuickProfitClose  = 1.50;                    // Standard Auto-Harvest Profit in USD per trade ($1.50)
+input double   InpMaxLossClose      = 8.00;                    // Hard Stop Loss in USD per trade ($8.00)
 input bool     InpTrailingStop      = true;                    // Enable Dynamic Trailing & Break-Even
 input bool     InpAutonomousScalper = true;                    // Autonomous EMA 9/21 Micro Scalper
 
@@ -264,7 +264,7 @@ void ManageOpenPositions()
       double currentTP = PositionGetDouble(POSITION_TP);
       double profit    = PositionGetDouble(POSITION_PROFIT);
 
-      // 1. AUTO-HARVEST QUICK PROFIT: Sub-dollar ($0.50) for Burst orders; $10.00 for standard scalps
+      // 1. AUTO-HARVEST QUICK PROFIT: Sub-dollar ($0.50) for Burst orders; $1.50 for standard scalps
       string posComment = PositionGetString(POSITION_COMMENT);
       double harvestThreshold = (StringFind(posComment, "Burst") >= 0) ? InpSubDollarProfit : InpQuickProfitClose;
 
@@ -273,6 +273,28 @@ void ManageOpenPositions()
          PrintFormat("💰 [AutoBot PROFIT HARVEST] Position #%I64u (%s) reached +$%.2f profit! Locking in profit now.", ticket, posComment, profit);
          ExtTrade.PositionClose(ticket);
          continue;
+      }
+
+      // 1b. EXPLICIT TP & SL PRICE REACHED CHECK
+      if (currentTP > 0)
+      {
+         if ((posType == POSITION_TYPE_BUY && bid >= currentTP) ||
+             (posType == POSITION_TYPE_SELL && ask <= currentTP))
+         {
+            PrintFormat("💰 [AutoBot TP REACHED] Position #%I64u reached TP %.2f! Locking in profit now.", ticket, currentTP);
+            ExtTrade.PositionClose(ticket);
+            continue;
+         }
+      }
+      if (currentSL > 0)
+      {
+         if ((posType == POSITION_TYPE_BUY && bid <= currentSL) ||
+             (posType == POSITION_TYPE_SELL && ask >= currentSL))
+         {
+            PrintFormat("🛑 [AutoBot SL HIT] Position #%I64u reached SL %.2f! Cutting loss.", ticket, currentSL);
+            ExtTrade.PositionClose(ticket);
+            continue;
+         }
       }
 
       // 2. HARD STOP LOSS: If loss exceeds -$12.50, close to prevent large drawdown
@@ -394,6 +416,22 @@ void CheckAndExecuteLocalOrders()
          {
             CloseAllPositions("Remote UI Command");
             lines[i] = sigId + "|" + sym + "|CLOSE_ALL|0|0|0|" + cmt + "|DONE";
+            updated = true;
+            continue;
+         }
+
+         // Handle Individual Ticket Remote Close Command
+         if (side == "CLOSE_TICKET" || side == "CLOSE")
+         {
+            ulong targetTicket = (ulong)StringToInteger(cmt);
+            if (targetTicket > 0)
+            {
+               if (ExtTrade.PositionClose(targetTicket))
+                  PrintFormat("✅ [AutoBot REMOTE CLOSE] Successfully closed ticket #%I64u", targetTicket);
+               else
+                  PrintFormat("⚠️ [AutoBot REMOTE CLOSE] Ticket #%I64u not found or already closed on broker.", targetTicket);
+            }
+            lines[i] = sigId + "|" + sym + "|" + side + "|0|0|0|" + cmt + "|DONE";
             updated = true;
             continue;
          }

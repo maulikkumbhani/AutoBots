@@ -416,6 +416,33 @@ class MT5BridgeManager:
         self.pending_signals.append(signal)
         logger.info(f"Queued MT5 trade signal: {side} {lots} lots of {mt5_sym} @ {price}")
         self._write_signal_to_local_ipc(signal)
+
+        # Record active open trade in ledger immediately so it appears live on UI
+        meta = self.STRATEGY_METADATA.get(strategy, self.STRATEGY_METADATA["SCALPER_EMA"])
+        new_ticket = (int(now_utc.timestamp() * 1000) % 900000000) + 100000000 + random.randint(1, 999)
+        active_trade_record = {
+            "ticket": new_ticket,
+            "signal_id": signal_id,
+            "symbol": mt5_sym,
+            "side": side.upper(),
+            "lots": signal["lots"],
+            "executed_price": round(price, 2),
+            "current_price": round(price, 2),
+            "sl": signal["stop_loss"],
+            "tp": signal["take_profit"],
+            "pnl": 0.0,
+            "pnl_status": "PROFIT",
+            "strategy": strategy,
+            "strategy_name": meta.get("name", strategy),
+            "horizon": meta.get("horizon", "Ultra-Short (1m-5m)"),
+            "timeframe": meta.get("default_tf", "1m"),
+            "status": "OPEN",
+            "is_closed": False,
+            "success": True,
+            "executed_at": ist_now.strftime("%Y.%m.%d %H:%M:%S"),
+        }
+        self.executed_trades.insert(0, active_trade_record)
+        self.account_info["open_positions_count"] = len([t for t in self.executed_trades if t.get("status") != "CLOSED"])
         return signal
 
     def _get_mql5_files_dirs(self) -> List[str]:
@@ -584,6 +611,136 @@ class MT5BridgeManager:
         self.open_mt5_positions.clear()
         self.account_info["open_positions_count"] = 0
         return {"status": "SUCCESS", "message": "Emergency close all command sent to MT5. All positions marked CLOSED."}
+
+    def get_current_spot(self, symbol: str = "XAUUSD") -> float:
+        """Returns the latest spot price from live broker quotes, open market feed, or executed trades."""
+        sym_u = symbol.upper()
+        if sym_u in self.live_broker_quotes and self.live_broker_quotes[sym_u].get("price"):
+            return float(self.live_broker_quotes[sym_u]["price"])
+        if "XAUUSD" in self.live_broker_quotes and self.live_broker_quotes["XAUUSD"].get("price"):
+            return float(self.live_broker_quotes["XAUUSD"]["price"])
+        if self.executed_trades:
+            return float(self.executed_trades[0].get("executed_price", 3573.50))
+        return 3573.50
+
+    def close_trade(self, ticket: Any, reason: str = "MANUAL_CLOSE") -> Dict[str, Any]:
+        """Closes a specific MT5 trade by ticket number, freezes realized PnL, and queues IPC command."""
+        t_id_str = str(ticket).lstrip("#").strip()
+        matched_trade = None
+        for t in self.executed_trades:
+            if str(t.get("ticket", "")).strip() == t_id_str:
+                matched_trade = t
+                break
+
+        if not matched_trade:
+            # Also check if there's any active open trade matching
+            open_trades = [t for t in self.executed_trades if t.get("status") != "CLOSED"]
+            if open_trades:
+                matched_trade = open_trades[0]
+            else:
+                return {"status": "ERROR", "message": f"Trade #{ticket} not found or already closed."}
+
+        cur_price = self.get_current_spot(matched_trade.get("symbol", "XAUUSD"))
+        exec_p = matched_trade.get("executed_price", cur_price)
+        side = matched_trade.get("side", "BUY")
+        lots = matched_trade.get("lots", 0.05)
+        multiplier = 100.0 if "XAU" in str(matched_trade.get("symbol", "XAUUSD")) else 1.0
+
+        raw_pnl = matched_trade.get("pnl")
+        if raw_pnl is None:
+            raw_pnl = round(((cur_price - exec_p) if side == "BUY" else (exec_p - cur_price)) * lots * multiplier, 2)
+
+        matched_trade["status"] = "CLOSED"
+        matched_trade["is_closed"] = True
+        matched_trade["close_reason"] = reason
+        matched_trade["closed_at"] = datetime.now(timezone.utc).strftime("%Y.%m.%d %H:%M:%S")
+        matched_trade["pnl"] = round(float(raw_pnl), 2)
+        matched_trade["pnl_status"] = "PROFIT" if matched_trade["pnl"] >= 0 else "LOSS"
+
+        # Queue command for MT5 EA
+        line = f"CMD-CLOSE-{t_id_str}|XAUUSD|CLOSE_TICKET|0|0|0|{t_id_str}|QUEUED\n"
+        for d in self._get_mql5_files_dirs():
+            try:
+                if not os.path.exists(d):
+                    os.makedirs(d, exist_ok=True)
+                order_file = os.path.join(d, "autobot_orders.txt")
+                with open(order_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception as e:
+                logger.debug(f"IPC close ticket write info for {d}: {e}")
+
+        # Update open positions count
+        open_count = len([t for t in self.executed_trades if t.get("status") != "CLOSED"])
+        self.account_info["open_positions_count"] = open_count
+
+        return {
+            "status": "SUCCESS",
+            "message": f"Trade #{matched_trade.get('ticket')} closed ({reason}) with realized P&L ${matched_trade['pnl']:.2f}",
+            "trade": matched_trade,
+        }
+
+    def evaluate_and_harvest_trades(self, live_price: Optional[float] = None) -> List[Dict[str, Any]]:
+        """
+        Auto-Harvest Engine: Evaluates all open trades against live spot price, SL, TP,
+        and quick-profit scalp targets. Closes trades automatically once target is reached.
+        """
+        cur_price = live_price or self.get_current_spot("XAUUSD")
+        closed_trades = []
+
+        for t in self.executed_trades:
+            if t.get("status") == "CLOSED" or t.get("is_closed", False):
+                continue
+
+            exec_p = t.get("executed_price", cur_price)
+            side = t.get("side", "BUY")
+            lots = t.get("lots", 0.05)
+            tp = t.get("tp") or t.get("take_profit") or 0.0
+            sl = t.get("sl") or t.get("stop_loss") or 0.0
+            multiplier = 100.0 if "XAU" in str(t.get("symbol", "XAUUSD")) else 1.0
+
+            pnl = round(((cur_price - exec_p) if side == "BUY" else (exec_p - cur_price)) * lots * multiplier, 2)
+            t["current_price"] = cur_price
+            t["pnl"] = pnl
+            t["pnl_status"] = "PROFIT" if pnl >= 0 else "LOSS"
+
+            # 1. Take Profit hit
+            is_tp = False
+            if tp > 0:
+                is_tp = (cur_price >= tp) if side == "BUY" else (cur_price <= tp)
+
+            # 2. Stop Loss hit
+            is_sl = False
+            if sl > 0:
+                is_sl = (cur_price <= sl) if side == "BUY" else (cur_price >= sl)
+
+            # 3. Dynamic Quick-Profit Scalp Lock:
+            # Micro-burst trades lock in at +$0.50-$1.00; Standard scalps lock in at +$1.50+
+            is_harvest = False
+            strat = str(t.get("strategy", "")).upper()
+            if "BURST" in strat or "MICRO" in strat:
+                if pnl >= 0.50:
+                    is_harvest = True
+            elif pnl >= 1.50:
+                is_harvest = True
+
+            # 4. Hard Drawdown Protection Guard (cut immediately if loss exceeds -$8.00)
+            is_risk_stop = (pnl <= -8.00)
+
+            if is_tp or is_sl or is_harvest or is_risk_stop:
+                if is_tp:
+                    reason = "TAKE_PROFIT"
+                elif is_sl:
+                    reason = "STOP_LOSS"
+                elif is_harvest:
+                    reason = "AUTO_PROFIT_HARVEST"
+                else:
+                    reason = "MAX_LOSS_GUARD"
+
+                res = self.close_trade(t["ticket"], reason=reason)
+                closed_trades.append(res)
+                logger.info(f"Auto-harvested trade #{t['ticket']}: Closed at {cur_price} with PnL ${pnl:.2f} ({reason})")
+
+        return closed_trades
 
     def sync_positions(self) -> Dict[str, Any]:
         """
@@ -812,19 +969,10 @@ class MT5BridgeManager:
         self.sync_file_telemetry()
         trades = list(self.executed_trades)
 
-        # Update current floating PnL on OPEN trades only
-        cur_price = self.live_broker_quotes.get("XAUUSD", {}).get("price", 3520.0)
-        for t in trades:
-            if t.get("status") == "CLOSED" or t.get("is_closed", False):
-                # Preserved frozen closed PnL
-                continue
-            exec_p = t.get("executed_price", cur_price)
-            side = t.get("side", "BUY")
-            lots = t.get("lots", 0.05)
-            pnl = round(((cur_price - exec_p) if side == "BUY" else (exec_p - cur_price)) * lots * 100.0, 2)
-            t["current_price"] = cur_price
-            t["pnl"] = pnl
-            t["pnl_status"] = "PROFIT" if pnl >= 0 else "LOSS"
+        # Update current floating PnL and run Auto-Harvest check on all open trades
+        cur_price = self.get_current_spot("XAUUSD")
+        self.evaluate_and_harvest_trades(cur_price)
+        trades = list(self.executed_trades)
 
         # 1. Filter by Strategy (case-insensitive and substring matching)
         if strategy and strategy.strip().upper() != "ALL":

@@ -49,6 +49,11 @@ class StrategyAllocationRequest(BaseModel):
     isolated_strategy: Optional[str] = None
 
 
+class CloseTradeRequest(BaseModel):
+    ticket: Any
+    reason: Optional[str] = "MANUAL_UI_CLOSE"
+
+
 class MicroBurstRequest(BaseModel):
     side: str  # "BUY" or "SELL"
     burst_count: Optional[int] = 25  # 5, 10, 25, 50
@@ -152,6 +157,12 @@ async def update_volume_config(cfg: VolumeConfigUpdate) -> Dict[str, Any]:
     if "base_lots" in payload:
         mt5_bridge.default_lot_size = payload["base_lots"]
     return res
+
+
+@router.post("/close-trade")
+async def close_single_trade(req: CloseTradeRequest) -> Dict[str, Any]:
+    """Closes an individual MT5 trade ticket, freezes realized PnL, and queues IPC close command."""
+    return mt5_bridge.close_trade(req.ticket, reason=req.reason or "MANUAL_UI_CLOSE")
 
 
 @router.post("/close-all")

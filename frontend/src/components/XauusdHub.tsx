@@ -43,6 +43,7 @@ import {
   fetchFvgAnalysis,
   fetchVolumeOptimization,
   updateVolumeConfig,
+  closeSingleMT5Trade,
   closeAllMT5Positions,
   syncMT5Positions,
   clearGhostTrades,
@@ -351,6 +352,21 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       loadData();
     } catch (err: any) {
       setActionMessage(`❌ Micro-Burst Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleCloseSingleTrade = async (ticket: number | string) => {
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      const res = await closeSingleMT5Trade(ticket);
+      setActionMessage(`✅ ${res.message || `Trade #${ticket} closed successfully!`}`);
+      setTimeout(() => setActionMessage(null), 5000);
+      await loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Close Trade Error: ${err.message}`);
     } finally {
       setIsExecuting(false);
     }
@@ -2013,12 +2029,13 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                     <th style={{ padding: "10px 12px" }}>STRATEGY</th>
                     <th style={{ padding: "10px 12px" }}>TIME HORIZON</th>
                     <th style={{ padding: "10px 12px", textAlign: "right" }}>NET PNL ($)</th>
+                    <th style={{ padding: "10px 12px", textAlign: "center" }}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tradesData.trades.length === 0 ? (
                     <tr>
-                      <td colSpan={12} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
+                      <td colSpan={13} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
                         No trades found matching the selected filters.
                       </td>
                     </tr>
@@ -2088,6 +2105,34 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                         </td>
                         <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 900, fontFamily: "monospace", color: t.pnl >= 0 ? "#34d399" : "#f87171" }}>
                           {t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                          {t.status === "OPEN" ? (
+                            <button
+                              onClick={() => handleCloseSingleTrade(t.ticket)}
+                              disabled={isExecuting}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                borderRadius: "4px",
+                                border: "none",
+                                cursor: "pointer",
+                                background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                                color: "#fff",
+                                boxShadow: "0 2px 6px rgba(239, 68, 68, 0.3)",
+                                whiteSpace: "nowrap",
+                                transition: "all 0.15s ease"
+                              }}
+                              title="Close this trade immediately and lock realized P&L"
+                            >
+                              ⚡ Close
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: "10px", color: "var(--text-dim)", fontFamily: "monospace" }}>
+                              {t.close_reason || "REALIZED"}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))
