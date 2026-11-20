@@ -42,6 +42,7 @@ import {
   fetchFvgAnalysis,
   fetchVolumeOptimization,
   updateVolumeConfig,
+  closeAllMT5Positions,
   RecordedMT5Trade,
   StrategyPerformanceItem,
   FvgAnalysisResponse,
@@ -239,6 +240,21 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     }
   };
 
+  const handleCloseAllTrades = async () => {
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      await closeAllMT5Positions();
+      setActionMessage("🚨 Emergency CLOSE ALL command sent to MT5. Closing open positions immediately...");
+      setTimeout(() => setActionMessage(null), 5000);
+      loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Close All Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   const handleCopyServerUrl = () => {
     navigator.clipboard.writeText("http://127.0.0.1:8000");
     setCopiedUrl(true);
@@ -374,6 +390,27 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
               </span>
             </div>
           </div>
+
+          <button
+            onClick={handleCloseAllTrades}
+            disabled={isExecuting}
+            style={{
+              padding: "10px 14px",
+              fontSize: "11px",
+              fontWeight: 900,
+              borderRadius: "8px",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              background: "rgba(239, 68, 68, 0.2)",
+              color: "#fca5a5",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              transition: "all 0.2s"
+            }}
+          >
+            🚨 CLOSE ALL MT5 TRADES
+          </button>
         </div>
       </div>
 

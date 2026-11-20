@@ -1,60 +1,58 @@
 //+------------------------------------------------------------------+
-//|                                     AutoBot_MT5_BridgeNew.mq5    |
-//|                    AutoBot Quantitative Intelligence Terminal    |
-//|         Direct Local File IPC + Autonomous Scalper + HTTP Bridge |
+//|                                        AutoBot_MT5_BridgeNew.mq5 |
+//|                                  Copyright 2026, AutoBot Systems |
+//|                                      https://autobots-quant.com/ |
 //+------------------------------------------------------------------+
-#property copyright "AutoBot Quant Engine"
-#property link      "http://localhost:8000"
-#property version   "2.00"
+#property copyright   "Copyright 2026, AutoBot Systems"
+#property link        "https://autobots-quant.com/"
+#property version     "2.10"
+#property description "AutoBot MT5 High-Frequency Scalper & Risk Harvester"
 #property strict
 
 #include <Trade\Trade.mqh>
 
 //--- Input Parameters
-input group "=== AutoBot Server Connection ==="
-input string   InpServerUrl           = "http://127.0.0.1:8000"; // Server URL (HTTP Fallback)
-input int      InpPollIntervalSec     = 2;                       // Polling Interval (Seconds)
-input ulong    InpMagicNumber         = 888999;                  // Unique Magic Number
-input double   InpDefaultLots         = 0.05;                    // Default Lot Size (XAUUSD Gold)
-input ulong    InpDeviationPoints     = 20;                      // Slippage Tolerance (Points)
+input group "=== AutoBot Server & IPC Settings ==="
+input string   InpServerUrl         = "http://127.0.0.1:8000"; // AutoBot Backend URL
+input int      InpPollIntervalSec   = 1;                       // Fast Poll Interval (Seconds)
+input ulong    InpMagicNumber       = 888999;                  // Unique Magic Number
+input double   InpDefaultLots       = 0.05;                    // Default Lot Size
+input int      InpDeviationPoints   = 20;                      // Slippage Tolerance (Points)
+input int      InpMaxOpenPositions  = 2;                       // Strict Max Open Positions
 
-input group "=== Autonomous Algorithmic Execution ==="
-input bool     InpAutonomousScalper   = true;                    // Enable Autonomous Quant Scalper (Zero-Lag)
-input int      InpFastEmaPeriod       = 9;                       // Fast EMA Period
-input int      InpSlowEmaPeriod       = 21;                      // Slow EMA Period
-input double   InpTakeProfitPoints    = 800;                     // Take Profit in Points ($8.00 on Gold)
-input double   InpStopLossPoints      = 400;                     // Stop Loss in Points ($4.00 on Gold)
-input int      InpCooldownSeconds     = 60;                      // Minimum cooldown between auto-trades
+input group "=== Micro-Profit Scalping & Risk Guards ==="
+input double   InpTakeProfitPts     = 2.20;                    // Micro-Scalp TP in USD ($2.20 on Gold)
+input double   InpStopLossPts       = 1.50;                    // Micro-Scalp SL in USD ($1.50 on Gold)
+input double   InpQuickProfitClose  = 10.00;                   // Auto-Harvest Profit in USD per trade
+input double   InpMaxLossClose      = 12.50;                   // Hard Stop Loss in USD per trade
+input bool     InpTrailingStop      = true;                    // Enable Dynamic Trailing & Break-Even
+input bool     InpAutonomousScalper = true;                    // Autonomous EMA 9/21 Micro Scalper
 
-//--- Global Objects & State
-CTrade         ExtTrade;
-datetime       ExtLastPollTime = 0;
-datetime       ExtLastAutoTradeTime = 0;
-int            ExtExecutedCount = 0;
-string         ExtLastStatus = "Initializing...";
-string         ExtLastExecutedTicket = "None";
-int            ExtFastEmaHandle = INVALID_HANDLE;
-int            ExtSlowEmaHandle = INVALID_HANDLE;
-
-// File Names in MQL5/Files (Local Direct IPC)
+//--- Constants
 const string FILE_ORDERS    = "autobot_orders.txt";
 const string FILE_RESULTS   = "autobot_results.txt";
 const string FILE_TELEMETRY = "autobot_telemetry.txt";
 
-//+------------------------------------------------------------------+
-//| Utility to clean and normalize base server URL                   |
-//+------------------------------------------------------------------+
-string CleanUrl(string url)
-{
-   string cleaned = url;
-   StringTrimLeft(cleaned);
-   StringTrimRight(cleaned);
-   while (StringLen(cleaned) > 0 && StringSubstr(cleaned, StringLen(cleaned) - 1, 1) == "/")
-   {
-      cleaned = StringSubstr(cleaned, 0, StringLen(cleaned) - 1);
-   }
-   return cleaned;
-}
+//--- Global Variables
+CTrade         ExtTrade;
+datetime       ExtLastPollTime        = 0;
+datetime       ExtLastAutoTradeTime   = 0;
+int            ExtExecutedCount       = 0;
+string         ExtLastStatus          = "STANDBY: Ready";
+string         ExtLastExecutedTicket  = "None";
+int            ExtFastEmaHandle       = INVALID_HANDLE;
+int            ExtSlowEmaHandle       = INVALID_HANDLE;
+
+//--- Function Prototypes
+void CheckAndExecuteLocalOrders();
+void CheckAutonomousStrategy();
+void ManageOpenPositions();
+void CloseAllPositions(string reason);
+void UpdateChartHUD();
+void WriteLocalTelemetry();
+void SetOptimalFillingMode(string sym);
+void CreateChartButtons();
+void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, double tp_val, string comment, string sigId);
 
 //+------------------------------------------------------------------+
 //| Sets optimal filling mode for broker                             |
@@ -79,9 +77,9 @@ void CreateChartButtons()
    ObjectCreate(0, "BtnAutoBotBuy", OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_XDISTANCE, 20);
    ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_YDISTANCE, 225);
-   ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_XSIZE, 155);
-   ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_YSIZE, 32);
-   ObjectSetString(0, "BtnAutoBotBuy", OBJPROP_TEXT, "⚡ BUY 0.05 XAUUSD");
+   ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_XSIZE, 110);
+   ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_YSIZE, 30);
+   ObjectSetString(0, "BtnAutoBotBuy", OBJPROP_TEXT, "⚡ BUY 0.05");
    ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_BGCOLOR, clrDarkGreen);
    ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_FONTSIZE, 9);
@@ -89,15 +87,27 @@ void CreateChartButtons()
 
    // Sell Button
    ObjectCreate(0, "BtnAutoBotSell", OBJ_BUTTON, 0, 0, 0);
-   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_XDISTANCE, 185);
+   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_XDISTANCE, 135);
    ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_YDISTANCE, 225);
-   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_XSIZE, 155);
-   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_YSIZE, 32);
-   ObjectSetString(0, "BtnAutoBotSell", OBJPROP_TEXT, "⚡ SELL 0.05 XAUUSD");
+   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_XSIZE, 110);
+   ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_YSIZE, 30);
+   ObjectSetString(0, "BtnAutoBotSell", OBJPROP_TEXT, "⚡ SELL 0.05");
    ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_BGCOLOR, clrMaroon);
    ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_FONTSIZE, 9);
    ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+
+   // Emergency Close All Button
+   ObjectCreate(0, "BtnAutoBotCloseAll", OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_XDISTANCE, 250);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_YDISTANCE, 225);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_XSIZE, 130);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_YSIZE, 30);
+   ObjectSetString(0, "BtnAutoBotCloseAll", OBJPROP_TEXT, "🚨 CLOSE ALL");
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_BGCOLOR, clrCrimson);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_CORNER, CORNER_LEFT_UPPER);
 
    ChartRedraw(0);
 }
@@ -119,20 +129,15 @@ void WriteLocalTelemetry()
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       bool algoOn= (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
+      int openCount = PositionsTotal();
 
-      string data = StringFormat("%d|%s|%.2f|%.2f|%.2f|%.2f|%s|%.5f|%.5f|%d|%d|%s",
-         logn, srv, bal, eq, mar, fmar, _Symbol, bid, ask, algoOn ? 1 : 0, ExtExecutedCount, TimeToString(TimeCurrent())
+      string data = StringFormat("%d|%s|%.2f|%.2f|%.2f|%.2f|%s|%.5f|%.5f|%d|%d|%s|%d",
+         logn, srv, bal, eq, mar, fmar, _Symbol, bid, ask, algoOn ? 1 : 0, ExtExecutedCount, TimeToString(TimeCurrent()), openCount
       );
       FileWriteString(handle, data);
       FileClose(handle);
    }
 }
-
-// Forward declarations
-void ExecuteMarketOrder(string sym, string side, double lots, double sl_pts, double tp_pts, string comment, string sigId);
-void CheckAndExecuteLocalOrders();
-void CheckAutonomousStrategy();
-void UpdateChartHUD();
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -140,16 +145,15 @@ void UpdateChartHUD();
 int OnInit()
 {
    Print("==================================================================");
-   Print("[AutoBot v2.00] Initializing Direct File IPC + Autonomous Bridge...");
-   PrintFormat("[AutoBot] Target Symbol: %s | Magic: %d | Default Lots: %.2f", _Symbol, InpMagicNumber, InpDefaultLots);
+   Print("[AutoBot v2.10] Initializing High-Frequency Scalper & Risk Harvester...");
+   PrintFormat("[AutoBot] Target Symbol: %s | Magic: %d | Max Open Positions: %d", _Symbol, InpMagicNumber, InpMaxOpenPositions);
 
    ExtTrade.SetExpertMagicNumber(InpMagicNumber);
    ExtTrade.SetDeviationInPoints(InpDeviationPoints);
    SetOptimalFillingMode(_Symbol);
 
-   // Create Indicators for autonomous scalper
-   ExtFastEmaHandle = iMA(_Symbol, _Period, InpFastEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
-   ExtSlowEmaHandle = iMA(_Symbol, _Period, InpSlowEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   ExtFastEmaHandle = iMA(_Symbol, _Period, 9, 0, MODE_EMA, PRICE_CLOSE);
+   ExtSlowEmaHandle = iMA(_Symbol, _Period, 21, 0, MODE_EMA, PRICE_CLOSE);
 
    CreateChartButtons();
    EventSetTimer(InpPollIntervalSec);
@@ -157,7 +161,7 @@ int OnInit()
    WriteLocalTelemetry();
    UpdateChartHUD();
 
-   Print("[AutoBot v2.00] Initialization Complete. Direct File Bridge READY.");
+   Print("[AutoBot v2.10] Ready. Automatic Profit Harvester & Risk Guard Active.");
    Print("==================================================================");
    return(INIT_SUCCEEDED);
 }
@@ -170,6 +174,7 @@ void OnDeinit(const int reason)
    EventKillTimer();
    ObjectDelete(0, "BtnAutoBotBuy");
    ObjectDelete(0, "BtnAutoBotSell");
+   ObjectDelete(0, "BtnAutoBotCloseAll");
    if (ExtFastEmaHandle != INVALID_HANDLE) IndicatorRelease(ExtFastEmaHandle);
    if (ExtSlowEmaHandle != INVALID_HANDLE) IndicatorRelease(ExtSlowEmaHandle);
    Comment("");
@@ -181,6 +186,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   ManageOpenPositions();
    datetime now = TimeCurrent();
    if (now - ExtLastPollTime >= InpPollIntervalSec)
    {
@@ -198,6 +204,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   ManageOpenPositions();
    CheckAndExecuteLocalOrders();
    if (InpAutonomousScalper)
       CheckAutonomousStrategy();
@@ -206,7 +213,106 @@ void OnTimer()
 }
 
 //+------------------------------------------------------------------+
-//| Chart event handler (Handles 1-Click Buy/Sell Buttons)           |
+//| Closes all open positions immediately                            |
+//+------------------------------------------------------------------+
+void CloseAllPositions(string reason)
+{
+   Print("🚨 [AutoBot RISK GUARD] Closing all open positions! Reason: ", reason);
+   int closed = 0;
+   for (int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if (ticket > 0)
+      {
+         if (ExtTrade.PositionClose(ticket))
+         {
+            closed++;
+         }
+      }
+   }
+   ExtLastStatus = StringFormat("CLOSED ALL %d POSITIONS (%s)", closed, reason);
+   PrintFormat("✅ Successfully closed %d positions.", closed);
+   WriteLocalTelemetry();
+   UpdateChartHUD();
+}
+
+//+------------------------------------------------------------------+
+//| Actively manages open positions (TP/SL, Trailing & Risk Limits)  |
+//+------------------------------------------------------------------+
+void ManageOpenPositions()
+{
+   int total = PositionsTotal();
+   if (total == 0) return;
+
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+   for (int i = total - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if (ticket <= 0) continue;
+
+      if (!PositionSelectByTicket(ticket)) continue;
+
+      string sym = PositionGetString(POSITION_SYMBOL);
+      if (sym != _Symbol) continue;
+
+      long posType   = PositionGetInteger(POSITION_TYPE);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSL = PositionGetDouble(POSITION_SL);
+      double currentTP = PositionGetDouble(POSITION_TP);
+      double profit    = PositionGetDouble(POSITION_PROFIT);
+
+      // 1. AUTO-HARVEST QUICK PROFIT: If profit >= $10.00, close immediately to secure cash
+      if (profit >= InpQuickProfitClose)
+      {
+         PrintFormat("💰 [AutoBot PROFIT HARVEST] Position #%I64u reached +$%.2f profit! Locking in profit now.", ticket, profit);
+         ExtTrade.PositionClose(ticket);
+         continue;
+      }
+
+      // 2. HARD STOP LOSS: If loss exceeds -$12.50, close to prevent large drawdown
+      if (profit <= -InpMaxLossClose)
+      {
+         PrintFormat("🛑 [AutoBot RISK STOP] Position #%I64u floating loss -$%.2f exceeded limit. Cutting loss now.", ticket, MathAbs(profit));
+         ExtTrade.PositionClose(ticket);
+         continue;
+      }
+
+      // 3. BREAK-EVEN LOCK & TRAILING STOP
+      if (InpTrailingStop)
+      {
+         if (posType == POSITION_TYPE_BUY)
+         {
+            double gainPts = bid - openPrice;
+            // If in profit by $1.20, move SL to openPrice + $0.30
+            if (gainPts >= 1.20)
+            {
+               double newSL = NormalizeDouble(openPrice + 0.30, 2);
+               if (currentSL < newSL)
+               {
+                  ExtTrade.PositionModify(ticket, newSL, currentTP);
+               }
+            }
+         }
+         else if (posType == POSITION_TYPE_SELL)
+         {
+            double gainPts = openPrice - ask;
+            if (gainPts >= 1.20)
+            {
+               double newSL = NormalizeDouble(openPrice - 0.30, 2);
+               if (currentSL == 0.0 || currentSL > newSL)
+               {
+                  ExtTrade.PositionModify(ticket, newSL, currentTP);
+               }
+            }
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Chart event handler                                              |
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
@@ -215,15 +321,22 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       if (sparam == "BtnAutoBotBuy")
       {
          Print("[AutoBot 1-CLICK] Buy button clicked on chart!");
-         ExecuteMarketOrder(_Symbol, "BUY", InpDefaultLots, InpStopLossPoints, InpTakeProfitPoints, "AutoBot_1Click_BUY", "MANUAL_UI");
+         ExecuteMarketOrder(_Symbol, "BUY", InpDefaultLots, InpStopLossPts, InpTakeProfitPts, "AutoBot_1Click_BUY", "MANUAL_UI");
          ObjectSetInteger(0, "BtnAutoBotBuy", OBJPROP_STATE, false);
          ChartRedraw(0);
       }
       else if (sparam == "BtnAutoBotSell")
       {
          Print("[AutoBot 1-CLICK] Sell button clicked on chart!");
-         ExecuteMarketOrder(_Symbol, "SELL", InpDefaultLots, InpStopLossPoints, InpTakeProfitPoints, "AutoBot_1Click_SELL", "MANUAL_UI");
+         ExecuteMarketOrder(_Symbol, "SELL", InpDefaultLots, InpStopLossPts, InpTakeProfitPts, "AutoBot_1Click_SELL", "MANUAL_UI");
          ObjectSetInteger(0, "BtnAutoBotSell", OBJPROP_STATE, false);
+         ChartRedraw(0);
+      }
+      else if (sparam == "BtnAutoBotCloseAll")
+      {
+         Print("[AutoBot 1-CLICK] Close All button clicked on chart!");
+         CloseAllPositions("Manual On-Chart Button");
+         ObjectSetInteger(0, "BtnAutoBotCloseAll", OBJPROP_STATE, false);
          ChartRedraw(0);
       }
    }
@@ -262,58 +375,71 @@ void CheckAndExecuteLocalOrders()
    {
       string parts[];
       int n = StringSplit(lines[i], '|', parts);
-      // Format: signal_id|symbol|side|lots|sl_pts|tp_pts|comment|status
       if (n >= 8 && parts[7] == "QUEUED")
       {
          string sigId = parts[0];
          string sym   = parts[1];
          string side  = parts[2];
          double lots  = StringToDouble(parts[3]);
-         double slPts = StringToDouble(parts[4]);
-         double tpPts = StringToDouble(parts[5]);
+         double slVal = StringToDouble(parts[4]);
+         double tpVal = StringToDouble(parts[5]);
          string cmt   = parts[6];
 
-         if (lots <= 0.0) lots = InpDefaultLots;
-         if (sym == "") sym = _Symbol;
+         // Handle Emergency Close Command
+         if (side == "CLOSE_ALL")
+         {
+            CloseAllPositions("Remote UI Command");
+            lines[i] = sigId + "|" + sym + "|CLOSE_ALL|0|0|0|" + cmt + "|DONE";
+            updated = true;
+            continue;
+         }
 
-         PrintFormat("[AutoBot IPC] Found pending signal %s: %s %.2f lots %s", sigId, side, lots, sym);
-         ExecuteMarketOrder(sym, side, lots, slPts, tpPts, cmt, sigId);
+         // STRICT RISK CAP: Maximum open positions guard
+         int currentOpen = PositionsTotal();
+         if (currentOpen >= InpMaxOpenPositions)
+         {
+            PrintFormat("[AutoBot RISK GUARD] Max open positions (%d) reached. Skipping order %s to protect capital.", InpMaxOpenPositions, sigId);
+            lines[i] = sigId + "|" + sym + "|" + side + "|0|0|0|" + cmt + "|SKIPPED_MAX_POS";
+            updated = true;
+            continue;
+         }
 
-         parts[7] = "PROCESSED";
-         lines[i] = StringFormat("%s|%s|%s|%.2f|%.1f|%.1f|%s|%s", parts[0], parts[1], parts[2], lots, slPts, tpPts, cmt, parts[7]);
+         ExecuteMarketOrder(sym, side, lots, slVal, tpVal, cmt, sigId);
+         lines[i] = sigId + "|" + sym + "|" + side + "|" + DoubleToString(lots, 2) + "|" + DoubleToString(slVal, 2) + "|" + DoubleToString(tpVal, 2) + "|" + cmt + "|EXECUTED";
          updated = true;
       }
    }
 
-   // Write back updated status to prevent duplicate execution
    if (updated)
    {
-      int outHandle = FileOpen(FILE_ORDERS, FILE_WRITE|FILE_TXT|FILE_ANSI);
-      if (outHandle != INVALID_HANDLE)
+      int writeHandle = FileOpen(FILE_ORDERS, FILE_WRITE|FILE_TXT|FILE_ANSI);
+      if (writeHandle != INVALID_HANDLE)
       {
-         for (int i = 0; i < count; i++)
-            FileWriteString(outHandle, lines[i] + "\r\n");
-         FileClose(outHandle);
+         for (int j = 0; j < ArraySize(lines); j++)
+         {
+            FileWriteString(writeHandle, lines[j] + "\r\n");
+         }
+         FileClose(writeHandle);
       }
    }
 }
 
 //+------------------------------------------------------------------+
-//| Autonomous Scalping Engine (EMA Cross on XAUUSD)                 |
+//| Autonomous Scalper Strategy (EMA 9/21 Micro-Momentum)            |
 //+------------------------------------------------------------------+
 void CheckAutonomousStrategy()
 {
    datetime now = TimeCurrent();
-   if (now - ExtLastAutoTradeTime < InpCooldownSeconds) return;
+   if (now - ExtLastAutoTradeTime < 60) return; // 60s cooldown
 
-   // Check if we already have an open position on current symbol
+   // Strict Cap: Only 1 autonomous position at a time
    int openCount = 0;
    for (int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if (PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
          openCount++;
    }
-   if (openCount >= 2) return; // Maximum 2 concurrent positions per strategy
+   if (openCount >= 1) return;
 
    double fastEma[], slowEma[];
    ArraySetAsSeries(fastEma, true);
@@ -322,34 +448,31 @@ void CheckAutonomousStrategy()
    if (CopyBuffer(ExtFastEmaHandle, 0, 0, 3, fastEma) < 3) return;
    if (CopyBuffer(ExtSlowEmaHandle, 0, 0, 3, slowEma) < 3) return;
 
-   // Bullish EMA crossover: Fast crossed above Slow
    bool bullishCross = (fastEma[1] > slowEma[1] && fastEma[2] <= slowEma[2]);
-   // Bearish EMA crossover: Fast crossed below Slow
    bool bearishCross = (fastEma[1] < slowEma[1] && fastEma[2] >= slowEma[2]);
 
    if (bullishCross)
    {
-      Print("[AutoBot Autonomous] Bullish EMA crossover detected on ", _Symbol, "! Executing BUY...");
-      ExecuteMarketOrder(_Symbol, "BUY", InpDefaultLots, InpStopLossPoints, InpTakeProfitPoints, "AutoBot_AutoScalp_BUY", "AUTONOMOUS");
+      Print("[AutoBot Autonomous] Bullish EMA crossover on ", _Symbol, "! Executing BUY...");
+      ExecuteMarketOrder(_Symbol, "BUY", InpDefaultLots, InpStopLossPts, InpTakeProfitPts, "Auto_Scalp_BUY", "AUTONOMOUS");
       ExtLastAutoTradeTime = now;
    }
    else if (bearishCross)
    {
-      Print("[AutoBot Autonomous] Bearish EMA crossover detected on ", _Symbol, "! Executing SELL...");
-      ExecuteMarketOrder(_Symbol, "SELL", InpDefaultLots, InpStopLossPoints, InpTakeProfitPoints, "AutoBot_AutoScalp_SELL", "AUTONOMOUS");
+      Print("[AutoBot Autonomous] Bearish EMA crossover on ", _Symbol, "! Executing SELL...");
+      ExecuteMarketOrder(_Symbol, "SELL", InpDefaultLots, InpStopLossPts, InpTakeProfitPts, "Auto_Scalp_SELL", "AUTONOMOUS");
       ExtLastAutoTradeTime = now;
    }
 }
 
 //+------------------------------------------------------------------+
-//| Executes Market Order via CTrade                                 |
+//| Executes Market Order via CTrade with Precise Micro-TP/SL        |
 //+------------------------------------------------------------------+
-void ExecuteMarketOrder(string sym, string side, double lots, double sl_pts, double tp_pts, string comment, string sigId)
+void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, double tp_val, string comment, string sigId)
 {
    if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
    {
       Print("❌ [AutoBot EXECUTION BLOCKED] Algo Trading button at top MT5 toolbar is OFF (Red)!");
-      Print("👉 Please CLICK the top 'Algo Trading' button in MT5 to turn it GREEN!");
       ExtLastStatus = "BLOCKED: Algo Trading button is RED";
       return;
    }
@@ -364,26 +487,40 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_pts, dou
    SymbolSelect(sym, true);
    SetOptimalFillingMode(sym);
 
-   double point = SymbolInfoDouble(sym, SYMBOL_POINT);
-   int digits   = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+   double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
 
    double execPrice = 0.0;
    double sl = 0.0;
    double tp = 0.0;
    bool success = false;
 
+   // Standardize Gold Micro-Scalp Distances: TP = $2.20, SL = $1.50
+   double defaultTpMove = InpTakeProfitPts;
+   double defaultSlMove = InpStopLossPts;
+
    if (side == "BUY")
    {
-      execPrice = SymbolInfoDouble(sym, SYMBOL_ASK);
-      if (sl_pts > 0) sl = NormalizeDouble(execPrice - (sl_pts * point), digits);
-      if (tp_pts > 0) tp = NormalizeDouble(execPrice + (tp_pts * point), digits);
+      execPrice = ask;
+      // If absolute price passed, use directly; otherwise calculate relative distance
+      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice - defaultSlMove, digits);
+
+      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      else tp = NormalizeDouble(execPrice + defaultTpMove, digits);
+
       success = ExtTrade.Buy(lots, sym, execPrice, sl, tp, comment);
    }
    else if (side == "SELL")
    {
-      execPrice = SymbolInfoDouble(sym, SYMBOL_BID);
-      if (sl_pts > 0) sl = NormalizeDouble(execPrice + (sl_pts * point), digits);
-      if (tp_pts > 0) tp = NormalizeDouble(execPrice - (tp_pts * point), digits);
+      execPrice = bid;
+      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice + defaultSlMove, digits);
+
+      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      else tp = NormalizeDouble(execPrice - defaultTpMove, digits);
+
       success = ExtTrade.Sell(lots, sym, execPrice, sl, tp, comment);
    }
 
@@ -394,9 +531,9 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_pts, dou
    if (success)
    {
       ExtExecutedCount++;
-      ExtLastExecutedTicket = StringFormat("#%d", ticket);
+      ExtLastExecutedTicket = StringFormat("#%I64u", ticket);
       ExtLastStatus = StringFormat("FILLED %s %.2f @ %.2f (Ticket %s)", side, lots, execPrice, ExtLastExecutedTicket);
-      PrintFormat("✅ [AutoBot TRADE SUCCESS] %s %.2f lots %s @ %.2f | Ticket #%d | TP: %.2f, SL: %.2f",
+      PrintFormat("✅ [AutoBot TRADE SUCCESS] %s %.2f lots %s @ %.2f | Ticket #%I64u | TP: %.2f, SL: %.2f",
          side, lots, sym, execPrice, ticket, tp, sl
       );
    }
@@ -406,12 +543,12 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_pts, dou
       PrintFormat("❌ [AutoBot TRADE ERROR] %s failed! Code: %d (%s)", side, errCode, errMsg);
    }
 
-   // Record result to local results file for Python backend
+   // Record result to local results file
    int resHandle = FileOpen(FILE_RESULTS, FILE_READ|FILE_WRITE|FILE_TXT|FILE_ANSI);
    if (resHandle != INVALID_HANDLE)
    {
       FileSeek(resHandle, 0, SEEK_END);
-      string resLine = StringFormat("%s|%d|%s|%s|%.2f|%.5f|%.5f|%.5f|%s|%d|%s|%s",
+      string resLine = StringFormat("%s|%I64u|%s|%s|%.2f|%.5f|%.5f|%.5f|%s|%d|%s|%s",
          sigId, ticket, sym, side, lots, execPrice, sl, tp, success ? "1" : "0", errCode, errMsg, TimeToString(TimeCurrent())
       );
       FileWriteString(resHandle, resLine + "\r\n");
@@ -434,6 +571,7 @@ void UpdateChartHUD()
    double fmar= AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    long login = AccountInfoInteger(ACCOUNT_LOGIN);
    string srv = AccountInfoString(ACCOUNT_SERVER);
+   int openCount = PositionsTotal();
 
    string algoWarning = "";
    if (!algoBtn)
@@ -442,22 +580,22 @@ void UpdateChartHUD()
    }
 
    string hud = StringFormat(
-      "⚡ AutoBot MT5 Execution Engine v2.00 (DIRECT LOCAL FILE IPC)\n" +
+      "⚡ AutoBot MT5 Execution Engine v2.10 (DIRECT FILE IPC + RISK GUARD)\n" +
       "----------------------------------------------------------------\n" +
       "Account: %d | Server: %s\n" +
       "Symbol: %s | Live Price: %.2f\n" +
       "Balance: $%.2f | Equity: $%.2f | Free Margin: $%.2f\n" +
-      "Orders Executed This Session: %d | Last Ticket: %s\n" +
-      "Autonomous Scalper: %s | Mode: Direct Local File Bridge\n" +
+      "Active Positions: %d / %d Max | Session Executed: %d\n" +
+      "Profit Harvester: Auto-Close @ +$%.2f | Hard Risk Guard: -$%.2f\n" +
       "----------------------------------------------------------------\n" +
       "Top Algo Trading Button: %s\n" +
       "EA Trade Allowed: %s%s\n" +
       "Status: %s\n" +
       "----------------------------------------------------------------\n" +
-      "Click [BUY] or [SELL] buttons below for instant 1-click execution",
+      "[BUY] [SELL] or [🚨 CLOSE ALL] buttons below",
       login, srv, _Symbol, SymbolInfoDouble(_Symbol, SYMBOL_BID),
-      bal, eq, fmar, ExtExecutedCount, ExtLastExecutedTicket,
-      InpAutonomousScalper ? "✅ ACTIVE (EMA 9/21 Auto-Scalp)" : "MANUAL ONLY",
+      bal, eq, fmar, openCount, InpMaxOpenPositions, ExtExecutedCount,
+      InpQuickProfitClose, InpMaxLossClose,
       algoBtn ? "✅ ON (Green)" : "❌ OFF (RED - TRADES BLOCKED!)",
       eaTrade ? "✅ ENABLED" : "❌ DISABLED",
       algoWarning, ExtLastStatus

@@ -128,6 +128,12 @@ async def update_volume_config(cfg: VolumeConfigUpdate) -> Dict[str, Any]:
     return res
 
 
+@router.post("/close-all")
+async def close_all_positions() -> Dict[str, Any]:
+    """Sends emergency close command to MT5 EA to close all open positions immediately."""
+    return mt5_bridge.close_all_positions()
+
+
 @router.post("/config")
 async def update_mt5_config(cfg: MT5ConfigUpdate) -> Dict[str, Any]:
     """Updates configuration for MT5 automated trading bridge."""

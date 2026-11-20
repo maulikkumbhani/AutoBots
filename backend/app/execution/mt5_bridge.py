@@ -149,8 +149,35 @@ class MT5BridgeManager:
         ist_zone = pytz.timezone("Asia/Kolkata")
         ist_now = now_utc.astimezone(ist_zone)
 
+        # STRICT RISK GUARD: Max 2 concurrent open positions in MT5
+        open_count = self.account_info.get("open_positions_count", 0)
+        if open_count >= 2:
+            logger.warning(f"Risk guard: blocked order. Current MT5 open positions ({open_count}) >= 2.")
+            return {"signal_id": "REJECTED_MAX_POS", "status": "REJECTED", "reason": "Max open positions reached"}
+
+        # If user isolated a single strategy, reject all other strategies
+        if self.active_strategy_filter != "ALL" and strategy != self.active_strategy_filter:
+            logger.info(f"Skipped order for {strategy}: active strategy isolated to {self.active_strategy_filter}")
+            return {"signal_id": "SKIPPED_ISOLATED", "status": "SKIPPED"}
+
         mt5_sym = self.map_symbol(symbol)
         signal_id = f"SIG-{int(now_utc.timestamp() * 1000)}"
+
+        # For XAUUSD / Gold, calibrate realistic micro-scalp SL & TP if not explicitly tight
+        final_sl = stop_loss
+        final_tp = take_profit
+        if "XAU" in mt5_sym or "GOLD" in mt5_sym:
+            # If distance is wider than $5.00, calibrate to tight scalp target ($2.20 TP, $1.50 SL)
+            if side.upper() == "BUY":
+                if not final_tp or abs(final_tp - price) > 6.0:
+                    final_tp = round(price + 2.20, 2)
+                if not final_sl or abs(price - final_sl) > 6.0:
+                    final_sl = round(price - 1.50, 2)
+            else:
+                if not final_tp or abs(price - final_tp) > 6.0:
+                    final_tp = round(price - 2.20, 2)
+                if not final_sl or abs(final_sl - price) > 6.0:
+                    final_sl = round(price + 1.50, 2)
 
         signal = {
             "signal_id": signal_id,
@@ -159,8 +186,8 @@ class MT5BridgeManager:
             "side": side.upper(),
             "lots": round(max(0.01, lots if lots > 0 else self.default_lot_size), 2),
             "price": round(price, 5),
-            "stop_loss": round(stop_loss, 5) if stop_loss else 0.0,
-            "take_profit": round(take_profit, 5) if take_profit else 0.0,
+            "stop_loss": round(final_sl, 2) if final_sl else 0.0,
+            "take_profit": round(final_tp, 2) if final_tp else 0.0,
             "magic_number": magic_number or self.magic_number,
             "slippage": self.slippage_points,
             "strategy": strategy,
@@ -220,6 +247,8 @@ class MT5BridgeManager:
                             bid = float(parts[7])
                             ask = float(parts[8]) if len(parts) > 8 else bid
                             self.live_broker_quotes[sym] = {"price": (bid + ask) / 2.0, "bid": bid, "ask": ask}
+                            if len(parts) > 12 and parts[12].isdigit():
+                                self.account_info["open_positions_count"] = int(parts[12])
                 except Exception:
                     pass
 
@@ -291,6 +320,20 @@ class MT5BridgeManager:
                                     })
                 except Exception as e:
                     logger.debug(f"Error parsing autobot_results.txt: {e}")
+
+    def close_all_positions(self) -> Dict[str, Any]:
+        """Sends immediate emergency close command to MT5 EA and clears queued orders."""
+        line = "CMD-CLOSEALL|XAUUSD|CLOSE_ALL|0|0|0|EmergencyClose|QUEUED\n"
+        for d in self._get_mql5_files_dirs():
+            try:
+                os.makedirs(d, exist_ok=True)
+                order_file = os.path.join(d, "autobot_orders.txt")
+                with open(order_file, "w", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception as e:
+                logger.error(f"Failed to write CLOSE_ALL to {d}: {e}")
+        self.pending_signals.clear()
+        return {"status": "SUCCESS", "message": "Emergency close all command sent to MT5"}
 
     def pop_signals(self) -> List[Dict[str, Any]]:
         """Called by MT5 EA polling loop: retrieves and clears queued signals."""

@@ -474,6 +474,15 @@ export interface VolumeOptimizationData {
   sizing_reasoning: string;
 }
 
+export async function closeAllMT5Positions(): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/close-all`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to close all MT5 positions");
+  return res.json();
+}
+
 export async function fetchVolumeOptimization(symbol: string = "XAUUSD"): Promise<VolumeOptimizationData> {
   const res = await fetch(`${API_BASE}/mt5/bridge/volume-optimization?symbol=${encodeURIComponent(symbol)}`);
   if (!res.ok) throw new Error("Failed to fetch volume optimization");
