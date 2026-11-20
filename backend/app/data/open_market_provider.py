@@ -7,21 +7,35 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+import asyncio
+
 class OpenMarketDataProvider:
     """
     Direct, open, unblocked public market data provider.
     Bypasses Yahoo Finance rate-limiting (429/403) by querying
     LBMA physical Gold Spot (PAXG), European Central Bank (Frankfurter),
-    and 24/7 global crypto feeds.
+    and 24/7 global crypto feeds with in-memory caching to eliminate IO stalls.
     """
 
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
+    def __init__(self):
+        self._quote_cache: Dict[str, Dict[str, Any]] = {}
+        self._quote_cache_time: Dict[str, datetime] = {}
+        self._candle_cache: Dict[str, pd.DataFrame] = {}
+        self._candle_cache_time: Dict[str, datetime] = {}
+
     async def fetch_real_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         sym_u = symbol.upper().strip()
         now_utc = datetime.now(timezone.utc)
+
+        # In-memory quote cache (3-second TTL: prevents browser connection pool exhaustion)
+        if sym_u in self._quote_cache:
+            last_t = self._quote_cache_time.get(sym_u)
+            if last_t and (now_utc - last_t).total_seconds() < 3.0:
+                return self._quote_cache[sym_u]
 
         # 1. Gold Spot / XAUUSD
         if "XAU" in sym_u or "GOLD" in sym_u or "GC=F" in sym_u:
@@ -228,8 +242,16 @@ class OpenMarketDataProvider:
         return None
 
     async def fetch_real_candles(self, symbol: str, timeframe: str = "15m", limit: int = 60) -> Optional[pd.DataFrame]:
-        """Fetches real historical candles from unblocked open APIs."""
+        """Fetches real historical candles from unblocked open APIs with in-memory caching."""
         sym_u = symbol.upper().strip()
+        cache_key = f"{sym_u}_{timeframe}_{limit}"
+        now_utc = datetime.now(timezone.utc)
+
+        # 15-second in-memory candle cache: eliminates blocking network calls
+        if cache_key in self._candle_cache:
+            last_t = self._candle_cache_time.get(cache_key)
+            if last_t and (now_utc - last_t).total_seconds() < 15.0:
+                return self._candle_cache[cache_key].copy()
 
         # 1. Gold Spot / XAUUSD
         if "XAU" in sym_u or "GOLD" in sym_u or "GC=F" in sym_u:
@@ -257,7 +279,10 @@ class OpenMarketDataProvider:
                                 "volume": round(float(k[5]), 2),
                             })
                         if rows:
-                            return pd.DataFrame(rows)
+                            df_res = pd.DataFrame(rows)
+                            self._candle_cache[cache_key] = df_res
+                            self._candle_cache_time[cache_key] = now_utc
+                            return df_res
                 except Exception:
                     continue
 
@@ -287,7 +312,10 @@ class OpenMarketDataProvider:
                 curr = c
             # Last bar exact match to live price
             rows[-1]["close"] = 3865.39
-            return pd.DataFrame(rows)
+            df_res = pd.DataFrame(rows)
+            self._candle_cache[cache_key] = df_res
+            self._candle_cache_time[cache_key] = now_utc
+            return df_res
 
         # 2. Bitcoin
         if "BTC" in sym_u:

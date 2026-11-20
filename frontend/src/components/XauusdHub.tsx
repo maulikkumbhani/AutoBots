@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -133,18 +133,40 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
   const [botRunning, setBotRunning] = useState<boolean>(true);
 
-  // Load telemetry, chart, strategy matrix, volume optimization, allocations, market flow and trades
-  const loadData = async () => {
+  // In-flight request guards to prevent TCP congestion and ERR_INSUFFICIENT_RESOURCES
+  const isFastFetchingRef = useRef<boolean>(false);
+  const isHeavyFetchingRef = useRef<boolean>(false);
+
+  // Fast Poller (Only live tick and MT5 connection status, every 3 seconds)
+  const pollFastTick = async () => {
+    if (isFastFetchingRef.current) return;
+    isFastFetchingRef.current = true;
+    try {
+      const [tick, mt5] = await Promise.all([
+        fetchLiveTick(symbol).catch(() => null),
+        fetchMT5Status().catch(() => null),
+      ]);
+      if (tick) setLiveTick(tick);
+      if (mt5) setMt5Status(mt5);
+    } catch {
+      // ignore
+    } finally {
+      isFastFetchingRef.current = false;
+    }
+  };
+
+  // Heavy Data Loader (candles, indicators, matrix, trades, fvg, etc.)
+  const loadHeavyData = async () => {
+    if (isHeavyFetchingRef.current) return;
+    isHeavyFetchingRef.current = true;
     try {
       fetchBotStatus().then((st) => {
         if (st && typeof st.is_active === "boolean") setBotRunning(st.is_active);
       }).catch(() => {});
 
-      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes, volRes, allocRes, flowRes] = await Promise.all([
+      const [cData, indData, matrixRes, tradesRes, fvgRes, volRes, allocRes, flowRes] = await Promise.all([
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
-        fetchLiveTick(symbol).catch(() => null),
-        fetchMT5Status().catch(() => null),
         fetchStrategyPerformance().catch(() => null),
         fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy).catch(() => null),
         fetchFvgAnalysis(symbol).catch(() => null),
@@ -155,8 +177,6 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
       if (cData && cData.length > 0) setCandles(cData);
       if (indData) setIndicators(indData);
-      if (tick) setLiveTick(tick);
-      if (mt5) setMt5Status(mt5);
       if (matrixRes) {
         setStrategyMatrix(matrixRes.strategies || []);
         setIsolatedStrategyId(matrixRes.active_isolation || "ALL");
@@ -167,15 +187,31 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       if (allocRes) setAllocationsData(allocRes);
       if (flowRes) setMarketFlowData(flowRes);
     } catch (e) {
-      console.error("Error loading XAUUSD Hub data:", e);
+      console.error("Error loading XAUUSD heavy data:", e);
+    } finally {
+      isHeavyFetchingRef.current = false;
     }
   };
 
+  // Full refresh helper (used by manual actions, orders, and mode switches)
+  const loadData = async () => {
+    await Promise.all([pollFastTick(), loadHeavyData()]);
+  };
+
+  // Setup separate intervals: fast tick (3s), heavy data (15s), and immediate reload on filter changes
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 2500);
-    return () => clearInterval(interval);
+    loadHeavyData();
   }, [timeframe, ledgerTimeframe, ledgerPeriod, ledgerStrategy]);
+
+  useEffect(() => {
+    pollFastTick();
+    const fastInterval = setInterval(pollFastTick, 3000);
+    const heavyInterval = setInterval(loadHeavyData, 15000);
+    return () => {
+      clearInterval(fastInterval);
+      clearInterval(heavyInterval);
+    };
+  }, [symbol, timeframe, ledgerTimeframe, ledgerPeriod, ledgerStrategy]);
 
   // Strategy Isolation Handler
   const handleIsolateStrategy = async (stratId: string) => {
@@ -652,7 +688,11 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         borderRadius: "10px",
         border: "1px solid rgba(255,255,255,0.06)",
         overflowX: "auto",
-        WebkitOverflowScrolling: "touch"
+        WebkitOverflowScrolling: "touch",
+        position: "relative",
+        zIndex: 10,
+        marginBottom: "12px",
+        flexShrink: 0
       }}>
         <button
           onClick={() => setActiveTab("ANALYSIS")}

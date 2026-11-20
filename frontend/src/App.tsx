@@ -498,28 +498,30 @@ export const App: React.FC = () => {
     loadMarketData();
   }, [selectedSymbol, timeframe]);
 
-  // Continuous Auto-Sync Loop (800ms ultra-low latency live updates for smooth price action)
+  // Continuous Auto-Sync Loop (only runs when on Main Terminal to prevent resource exhaustion)
   useEffect(() => {
+    if (currentView === "XAUUSD") return;
+
     loadSystemState();
     loadPredictionRecords(selectedSymbol);
 
     if (!autoSync) return;
 
-    // Smooth, efficient 2000ms cadence to prevent UI stutter and browser CPU overload
+    // Smooth, efficient 3000ms cadence to prevent UI stutter and browser CPU overload
     const tickInterval = setInterval(async () => {
       await syncLiveTick();
-    }, 2000);
+    }, 3000);
 
     const stateInterval = setInterval(async () => {
       await loadSystemState();
       await loadPredictionRecords(selectedSymbol);
-    }, 4500);
+    }, 5000);
 
     return () => {
       clearInterval(tickInterval);
       clearInterval(stateInterval);
     };
-  }, [selectedSymbol, autoSync, timeframe]);
+  }, [selectedSymbol, autoSync, timeframe, currentView]);
 
   // Synchronize URL hash with subpage view (#xauusd or #terminal)
   useEffect(() => {
