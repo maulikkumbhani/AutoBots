@@ -9,6 +9,7 @@ Enables bidirectional communication between AutoBot and MetaTrader 5:
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import logging
+import os
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class MT5BridgeManager:
 
     def __init__(self):
         self.enabled: bool = True
-        self.server: str = "OctaFX-Demo"
+        self.server: str = "MetaQuotes-Demo"
         self.account_id: str = "115610153"
         self.default_lot_size: float = 0.05
         self.magic_number: int = 888999
@@ -61,9 +62,9 @@ class MT5BridgeManager:
             "free_margin": 100000.0,
             "leverage": 500,
             "currency": "USD",
-            "server": "OctaFX-Demo",
+            "server": "MetaQuotes-Demo",
             "account_id": "115610153",
-            "company": "OctaFX",
+            "company": "MetaQuotes",
             "is_connected": False,
         }
         self.last_heartbeat: Optional[datetime] = None
@@ -125,7 +126,85 @@ class MT5BridgeManager:
 
         self.pending_signals.append(signal)
         logger.info(f"Queued MT5 trade signal: {side} {lots} lots of {mt5_sym} @ {price}")
+        self._write_signal_to_local_ipc(signal)
         return signal
+
+    def _get_mql5_files_dirs(self) -> List[str]:
+        """Returns candidate directories for MT5 MQL5/Files on macOS Wine."""
+        base_user = "/Users/maulikkumbhani/Library/Application Support/net.metaquotes.wine.metatrader5"
+        return [
+            os.path.join(base_user, "drive_c/Program Files/MetaTrader 5/MQL5/Files"),
+            os.path.join(base_user, "drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/MQL5/Files"),
+        ]
+
+    def _write_signal_to_local_ipc(self, signal: Dict[str, Any]):
+        """Writes order directly to MQL5/Files/autobot_orders.txt for zero-network execution."""
+        line = f"{signal['signal_id']}|{signal['symbol']}|{signal['side']}|{signal['lots']}|{signal.get('stop_loss', 0.0)}|{signal.get('take_profit', 0.0)}|{signal.get('comment', 'AutoBot')}|QUEUED\n"
+        for d in self._get_mql5_files_dirs():
+            try:
+                os.makedirs(d, exist_ok=True)
+                order_file = os.path.join(d, "autobot_orders.txt")
+                with open(order_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except Exception as e:
+                logger.error(f"Failed to write order to {d}: {e}")
+
+    def sync_file_telemetry(self):
+        """Reads live account telemetry and order execution results from MQL5/Files."""
+        for d in self._get_mql5_files_dirs():
+            # 1. Telemetry
+            telem_path = os.path.join(d, "autobot_telemetry.txt")
+            if os.path.exists(telem_path):
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(telem_path), tz=timezone.utc)
+                    if (datetime.now(timezone.utc) - mtime).total_seconds() < 45:
+                        with open(telem_path, "r", encoding="utf-8") as f:
+                            raw = f.read().strip()
+                        parts = raw.split("|")
+                        if len(parts) >= 8:
+                            self.last_heartbeat = mtime
+                            self.account_info["is_connected"] = True
+                            self.account_info["account_id"] = parts[0]
+                            self.account_info["server"] = parts[1]
+                            self.account_info["balance"] = float(parts[2])
+                            self.account_info["equity"] = float(parts[3])
+                            self.account_info["margin"] = float(parts[4])
+                            self.account_info["free_margin"] = float(parts[5])
+                            sym = parts[6]
+                            bid = float(parts[7])
+                            ask = float(parts[8]) if len(parts) > 8 else bid
+                            self.live_broker_quotes[sym] = {"price": (bid + ask) / 2.0, "bid": bid, "ask": ask}
+                except Exception:
+                    pass
+
+            # 2. Results
+            results_path = os.path.join(d, "autobot_results.txt")
+            if os.path.exists(results_path):
+                try:
+                    with open(results_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split("|")
+                            if len(parts) >= 10:
+                                sig_id = parts[0]
+                                ticket = int(parts[1]) if parts[1].isdigit() else 0
+                                if not any(t.get("ticket") == ticket for t in self.executed_trades if ticket > 0):
+                                    self.executed_trades.append({
+                                        "ticket": ticket,
+                                        "signal_id": sig_id,
+                                        "symbol": parts[2],
+                                        "side": parts[3],
+                                        "lots": float(parts[4]),
+                                        "executed_price": float(parts[5]),
+                                        "sl": float(parts[6]),
+                                        "tp": float(parts[7]),
+                                        "success": parts[8] == "1",
+                                        "executed_at": parts[11] if len(parts) > 11 else datetime.now(timezone.utc).isoformat(),
+                                    })
+                except Exception:
+                    pass
 
     def pop_signals(self) -> List[Dict[str, Any]]:
         """Called by MT5 EA polling loop: retrieves and clears queued signals."""
@@ -253,6 +332,7 @@ class MT5BridgeManager:
 
     def get_status(self) -> Dict[str, Any]:
         """Returns bridge status for frontend display."""
+        self.sync_file_telemetry()
         now = datetime.now(timezone.utc)
         is_alive = False
         if self.last_heartbeat:
