@@ -43,10 +43,14 @@ import {
   fetchVolumeOptimization,
   updateVolumeConfig,
   closeAllMT5Positions,
+  fetchStrategyAllocations,
+  updateStrategyAllocationMode,
   RecordedMT5Trade,
   StrategyPerformanceItem,
   FvgAnalysisResponse,
   VolumeOptimizationData,
+  StrategyAllocationsResponse,
+  StrategyAllocationItem,
 } from "../api";
 
 interface XauusdHubProps {
@@ -76,6 +80,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   // Strategy, FVG & Volume Optimization Data
   const [strategyMatrix, setStrategyMatrix] = useState<StrategyPerformanceItem[]>([]);
   const [isolatedStrategyId, setIsolatedStrategyId] = useState<string>("ALL");
+  const [allocationsData, setAllocationsData] = useState<StrategyAllocationsResponse | null>(null);
   const [fvgData, setFvgData] = useState<FvgAnalysisResponse | null>(null);
   const [volumeData, setVolumeData] = useState<VolumeOptimizationData | null>(null);
   const [tradesData, setTradesData] = useState<{
@@ -104,10 +109,10 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     trades: [],
   });
 
-  // Load telemetry, chart, strategy matrix, volume optimization and trades
+  // Load telemetry, chart, strategy matrix, volume optimization, allocations and trades
   const loadData = async () => {
     try {
-      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes, volRes] = await Promise.all([
+      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes, volRes, allocRes] = await Promise.all([
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
         fetchLiveTick(symbol).catch(() => null),
@@ -116,6 +121,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy).catch(() => null),
         fetchFvgAnalysis(symbol).catch(() => null),
         fetchVolumeOptimization(symbol).catch(() => null),
+        fetchStrategyAllocations().catch(() => null),
       ]);
 
       if (cData && cData.length > 0) setCandles(cData);
@@ -129,6 +135,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       if (tradesRes) setTradesData(tradesRes);
       if (fvgRes) setFvgData(fvgRes);
       if (volRes) setVolumeData(volRes);
+      if (allocRes) setAllocationsData(allocRes);
     } catch (e) {
       console.error("Error loading XAUUSD Hub data:", e);
     }
@@ -154,6 +161,33 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       loadData();
     } catch (e: any) {
       setActionMessage(`❌ Failed to set strategy: ${e.message}`);
+    }
+  };
+
+  // Dynamic Strategy Allocation Mode Handler (80/20 Rule & 100% Solo)
+  const handleToggleAllocationMode = async (
+    mode: "DYNAMIC_WEIGHTED" | "SOLO_ISOLATION_100" | "BALANCED_EQUAL",
+    stratId?: string
+  ) => {
+    try {
+      const res = await updateStrategyAllocationMode(mode, stratId);
+      setAllocationsData(res);
+      if (stratId) {
+        setIsolatedStrategyId(stratId);
+      } else if (mode !== "SOLO_ISOLATION_100") {
+        setIsolatedStrategyId("ALL");
+      }
+      setActionMessage(
+        mode === "DYNAMIC_WEIGHTED"
+          ? "⚡ Dynamic 80/20 Allocation Enabled: 80% capital & trade opportunities routed to top-performing strategy."
+          : mode === "SOLO_ISOLATION_100"
+          ? `🎯 100% Solo Isolation Active: All execution exclusively assigned to ${stratId || "selected strategy"}.`
+          : "⚖️ Balanced Equal Mode Activated: Equal 16.7% execution weight across all 6 strategies."
+      );
+      setTimeout(() => setActionMessage(null), 4500);
+      loadData();
+    } catch (e: any) {
+      setActionMessage(`❌ Allocation Error: ${e.message}`);
     }
   };
 
@@ -1047,17 +1081,204 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Active Mode:</span>
+              <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Allocation Mode:</span>
               <span style={{
                 fontSize: "12px",
                 fontWeight: 800,
                 padding: "4px 10px",
                 borderRadius: "6px",
-                background: isolatedStrategyId === "ALL" ? "rgba(245, 158, 11, 0.2)" : "rgba(56, 189, 248, 0.2)",
-                color: isolatedStrategyId === "ALL" ? "#f59e0b" : "#38bdf8"
+                background: allocationsData?.mode === "DYNAMIC_WEIGHTED" ? "rgba(16, 185, 129, 0.2)" : allocationsData?.mode === "SOLO_ISOLATION_100" ? "rgba(56, 189, 248, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                color: allocationsData?.mode === "DYNAMIC_WEIGHTED" ? "#34d399" : allocationsData?.mode === "SOLO_ISOLATION_100" ? "#38bdf8" : "#f59e0b"
               }}>
-                {isolatedStrategyId === "ALL" ? "ALL 6 STRATEGIES ACTIVE" : `ISOLATED: ${isolatedStrategyId}`}
+                {allocationsData?.mode === "DYNAMIC_WEIGHTED" ? "⚡ 80/20 DYNAMIC PROFIT-WEIGHTED" : allocationsData?.mode === "SOLO_ISOLATION_100" ? `🎯 100% SOLO: ${isolatedStrategyId}` : "⚖️ EQUAL BALANCED (16.7%)"}
               </span>
+            </div>
+          </div>
+
+          {/* DYNAMIC 80/20 & PERFORMANCE CAPITAL ALLOCATION ENGINE */}
+          <div style={{
+            background: "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%)",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            borderRadius: "14px",
+            padding: "16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "14px",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: 900, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Flame size={16} color="#34d399" />
+                  DYNAMIC 80/20 CAPITAL & STRATEGY ALLOCATION ENGINE
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  {allocationsData?.summary || "Automatically weights capital & trade frequency by live win-rates. The dominant strategy gets 80% allocation, while runner-ups share 20%."}
+                </div>
+              </div>
+
+              {/* Mode Switcher Buttons */}
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  onClick={() => handleToggleAllocationMode("DYNAMIC_WEIGHTED")}
+                  style={{
+                    padding: "6px 12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: allocationsData?.mode === "DYNAMIC_WEIGHTED" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "rgba(255,255,255,0.06)",
+                    color: allocationsData?.mode === "DYNAMIC_WEIGHTED" ? "#fff" : "#94a3b8"
+                  }}
+                >
+                  ⚡ 80/20 Dynamic Auto
+                </button>
+                <button
+                  onClick={() => handleToggleAllocationMode("BALANCED_EQUAL")}
+                  style={{
+                    padding: "6px 12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: allocationsData?.mode === "BALANCED_EQUAL" ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "rgba(255,255,255,0.06)",
+                    color: allocationsData?.mode === "BALANCED_EQUAL" ? "#000" : "#94a3b8"
+                  }}
+                >
+                  ⚖️ Balanced Equal
+                </button>
+                <button
+                  onClick={() => handleToggleAllocationMode("SOLO_ISOLATION_100", isolatedStrategyId === "ALL" ? "GAP_FVG" : isolatedStrategyId)}
+                  style={{
+                    padding: "6px 12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    border: "none",
+                    cursor: "pointer",
+                    background: allocationsData?.mode === "SOLO_ISOLATION_100" ? "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)" : "rgba(255,255,255,0.06)",
+                    color: allocationsData?.mode === "SOLO_ISOLATION_100" ? "#000" : "#94a3b8"
+                  }}
+                >
+                  🎯 100% Solo Mode
+                </button>
+              </div>
+            </div>
+
+            {/* Allocation Breakdown Rows */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {allocationsData?.allocations?.map((item) => (
+                <div
+                  key={item.strategy_id}
+                  style={{
+                    background: item.is_top_performer ? "rgba(16, 185, 129, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                    border: item.is_top_performer ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(255, 255, 255, 0.05)",
+                    borderRadius: "10px",
+                    padding: "10px 14px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>
+                        {item.name}
+                      </span>
+                      <span style={{
+                        fontSize: "9px",
+                        fontWeight: 800,
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: item.horizon.includes("Ultra-Short") ? "rgba(245, 158, 11, 0.2)" : item.horizon.includes("Medium") ? "rgba(56, 189, 248, 0.2)" : "rgba(168, 85, 247, 0.2)",
+                        color: item.horizon.includes("Ultra-Short") ? "#f59e0b" : item.horizon.includes("Medium") ? "#38bdf8" : "#c084fc"
+                      }}>
+                        {item.horizon}
+                      </span>
+                      {item.is_top_performer && (
+                        <span style={{
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background: "rgba(16, 185, 129, 0.25)",
+                          color: "#34d399",
+                          border: "1px solid rgba(16, 185, 129, 0.4)"
+                        }}>
+                          👑 TOP WINNER (80% ALLOCATED)
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ fontSize: "11px" }}>
+                        <span style={{ color: "var(--text-dim)" }}>Win Rate: </span>
+                        <strong style={{ color: "#34d399" }}>{item.win_rate}%</strong>
+                      </div>
+                      <div style={{ fontSize: "11px" }}>
+                        <span style={{ color: "var(--text-dim)" }}>Net PnL: </span>
+                        <strong style={{ color: item.net_pnl >= 0 ? "#34d399" : "#f87171" }}>
+                          ${item.net_pnl.toFixed(2)}
+                        </strong>
+                      </div>
+                      <div style={{ fontSize: "11px" }}>
+                        <span style={{ color: "var(--text-dim)" }}>Lots: </span>
+                        <strong style={{ color: "#38bdf8" }}>{item.recommended_lot} Lots</strong>
+                      </div>
+                      <div style={{ fontSize: "11px" }}>
+                        <span style={{ color: "var(--text-dim)" }}>Target / Stop: </span>
+                        <strong style={{ color: "#fff" }}>+${item.target_tp_move} / -${item.protective_sl_move}</strong>
+                      </div>
+
+                      <button
+                        onClick={() => handleToggleAllocationMode("SOLO_ISOLATION_100", item.strategy_id)}
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          borderRadius: "4px",
+                          border: "none",
+                          cursor: "pointer",
+                          background: isolatedStrategyId === item.strategy_id && allocationsData?.mode === "SOLO_ISOLATION_100" ? "#38bdf8" : "rgba(255,255,255,0.08)",
+                          color: isolatedStrategyId === item.strategy_id && allocationsData?.mode === "SOLO_ISOLATION_100" ? "#000" : "#fff"
+                        }}
+                      >
+                        {isolatedStrategyId === item.strategy_id && allocationsData?.mode === "SOLO_ISOLATION_100" ? "✓ Active 100% Solo" : "Test 100% Solo"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Percentage Progress Bar */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{
+                      flex: 1,
+                      height: "6px",
+                      background: "rgba(255,255,255,0.05)",
+                      borderRadius: "3px",
+                      overflow: "hidden"
+                    }}>
+                      <div style={{
+                        width: `${item.allocation_pct}%`,
+                        height: "100%",
+                        background: item.is_top_performer ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)" : "linear-gradient(90deg, #38bdf8 0%, #0284c7 100%)",
+                        borderRadius: "3px",
+                        transition: "width 0.4s ease"
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize: "11px",
+                      fontWeight: 900,
+                      color: item.is_top_performer ? "#34d399" : "#38bdf8",
+                      minWidth: "45px",
+                      textAlign: "right"
+                    }}>
+                      {item.allocation_pct}%
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1280,6 +1501,34 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
               <div>
                 <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-dim)", marginBottom: "6px" }}>
                   STRATEGY FILTER:
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "6px" }}>
+                  {[
+                    { id: "all", label: "ALL" },
+                    { id: "GAP_FVG", label: "FVG" },
+                    { id: "SCALPER_EMA", label: "EMA" },
+                    { id: "BOLLINGER_REV", label: "BB" },
+                    { id: "ORDER_BLOCK", label: "OB" },
+                    { id: "CONSENSUS_ML", label: "ML" },
+                    { id: "SWING_FLOW", label: "SWING" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setLedgerStrategy(item.id)}
+                      style={{
+                        padding: "3px 6px",
+                        fontSize: "9px",
+                        fontWeight: 800,
+                        borderRadius: "4px",
+                        border: "none",
+                        cursor: "pointer",
+                        background: ledgerStrategy === item.id ? "#10b981" : "rgba(255,255,255,0.05)",
+                        color: ledgerStrategy === item.id ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
                 <select
                   value={ledgerStrategy}

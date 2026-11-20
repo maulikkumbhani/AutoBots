@@ -43,6 +43,11 @@ class StrategyIsolationRequest(BaseModel):
     strategy_id: str
 
 
+class StrategyAllocationRequest(BaseModel):
+    mode: str  # "DYNAMIC_WEIGHTED", "SOLO_ISOLATION_100", "BALANCED_EQUAL"
+    isolated_strategy: Optional[str] = None
+
+
 @router.get("/status")
 async def get_mt5_status() -> Dict[str, Any]:
     """Returns MT5 bridge connection state, account info, and active queue."""
@@ -69,6 +74,18 @@ async def get_strategy_performance() -> Dict[str, Any]:
 async def isolate_strategy(req: StrategyIsolationRequest) -> Dict[str, Any]:
     """Activates ONLY one strategy for isolated testing in MT5 or resumes 'ALL'."""
     return mt5_bridge.set_isolated_strategy(req.strategy_id)
+
+
+@router.get("/strategy-allocations")
+async def get_strategy_allocations() -> Dict[str, Any]:
+    """Returns dynamic 80/20 & performance-weighted allocation weights, lots, and TP/SL setup for all 6 strategies."""
+    return mt5_bridge.calculate_strategy_allocations()
+
+
+@router.post("/strategy-allocations")
+async def update_strategy_allocations(req: StrategyAllocationRequest) -> Dict[str, Any]:
+    """Updates dynamic allocation mode (80/20 dynamic, 100% solo isolation, or balanced equal)."""
+    return mt5_bridge.set_allocation_mode(req.mode, req.isolated_strategy)
 
 
 @router.get("/fvg-analysis")

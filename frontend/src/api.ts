@@ -446,6 +446,47 @@ export async function isolateStrategy(strategyId: string): Promise<any> {
   return res.json();
 }
 
+export interface StrategyAllocationItem {
+  strategy_id: string;
+  name: string;
+  horizon: string;
+  allocation_pct: number;
+  target_tp_move: number;
+  protective_sl_move: number;
+  recommended_lot: number;
+  win_rate: number;
+  net_pnl: number;
+  status: string;
+  is_top_performer: boolean;
+}
+
+export interface StrategyAllocationsResponse {
+  mode: "DYNAMIC_WEIGHTED" | "SOLO_ISOLATION_100" | "BALANCED_EQUAL";
+  active_strategy_filter: string;
+  top_performer?: string;
+  allocations: StrategyAllocationItem[];
+  summary: string;
+}
+
+export async function fetchStrategyAllocations(): Promise<StrategyAllocationsResponse> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/strategy-allocations`);
+  if (!res.ok) throw new Error("Failed to fetch strategy allocations");
+  return res.json();
+}
+
+export async function updateStrategyAllocationMode(
+  mode: "DYNAMIC_WEIGHTED" | "SOLO_ISOLATION_100" | "BALANCED_EQUAL",
+  isolated_strategy?: string
+): Promise<StrategyAllocationsResponse> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/strategy-allocations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, isolated_strategy }),
+  });
+  if (!res.ok) throw new Error("Failed to update strategy allocation mode");
+  return res.json();
+}
+
 export async function fetchFvgAnalysis(symbol: string = "XAUUSD"): Promise<FvgAnalysisResponse> {
   const res = await fetch(`${API_BASE}/mt5/bridge/fvg-analysis?symbol=${encodeURIComponent(symbol)}`);
   if (!res.ok) throw new Error("Failed to fetch FVG analysis");
