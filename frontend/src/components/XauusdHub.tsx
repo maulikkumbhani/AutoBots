@@ -649,7 +649,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
             {/* Candlestick Chart */}
             <div style={{
-              height: isMobile ? "320px" : "440px",
+              height: isMobile ? "360px" : "500px",
               background: "#020617",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.08)",

@@ -1206,7 +1206,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Chart Card */}
-          <div className="glass-card" style={{ padding: "12px" }}>
+          <div className="glass-card" style={{ padding: "12px", marginBottom: "18px" }}>
             {/* Top Bar of Chart: Instrument, Live Price, Day Change & Exchange Clock */}
             <div
               style={{

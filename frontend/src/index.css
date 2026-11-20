@@ -314,7 +314,7 @@ body {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   overflow: hidden;
-  height: 480px;
+  min-height: 480px;
 }
 
 .chart-header-bar {
@@ -379,6 +379,31 @@ body {
   gap: 8px;
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.4) rgba(15, 23, 42, 0.4);
+  padding-bottom: 6px;
+  position: relative;
+  z-index: 5;
+}
+
+.tabs-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tabs-nav::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 4px;
+}
+
+.tabs-nav::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 4px;
+}
+
+.tabs-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
 }
 
 .tab-btn {
@@ -391,6 +416,10 @@ body {
   border-bottom: 2px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .tab-btn:hover {
