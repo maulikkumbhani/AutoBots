@@ -25,8 +25,9 @@ export const getApiBase = (): string => {
     if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
       return "https://autobots-quant-backend.onrender.com/api/v1";
     }
+    return `http://${window.location.hostname || "127.0.0.1"}:8000/api/v1`;
   }
-  return "http://localhost:8000/api/v1";
+  return "http://127.0.0.1:8000/api/v1";
 };
 
 export const getStoredApiUrl = (): string => {
@@ -36,9 +37,9 @@ export const getStoredApiUrl = (): string => {
     if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
       return "https://autobots-quant-backend.onrender.com";
     }
-    return "http://localhost:8000";
+    return `http://${window.location.hostname || "127.0.0.1"}:8000`;
   }
-  return "http://localhost:8000";
+  return "http://127.0.0.1:8000";
 };
 
 export const setStoredApiUrl = (url: string) => {
