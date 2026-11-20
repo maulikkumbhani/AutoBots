@@ -452,6 +452,51 @@ export async function fetchFvgAnalysis(symbol: string = "XAUUSD"): Promise<FvgAn
   return res.json();
 }
 
+export interface VolumeOptimizationData {
+  mode: "DYNAMIC_AUTO" | "MANUAL_FIXED";
+  symbol: string;
+  current_price: number;
+  recommended_lots: number;
+  base_lots: number;
+  min_lots: number;
+  max_lots: number;
+  notional_value: number;
+  margin_required_usd: number;
+  target_move_points: number;
+  projected_profit_usd: number;
+  protective_stop_points: number;
+  projected_risk_usd: number;
+  reward_risk_ratio: number;
+  estimated_hold_time: string;
+  bulk_harvesting_enabled: boolean;
+  bulk_wave_entries: number;
+  bulk_cumulative_profit_target_usd: number;
+  sizing_reasoning: string;
+}
+
+export async function fetchVolumeOptimization(symbol: string = "XAUUSD"): Promise<VolumeOptimizationData> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/volume-optimization?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch volume optimization");
+  return res.json();
+}
+
+export async function updateVolumeConfig(config: {
+  mode?: "DYNAMIC_AUTO" | "MANUAL_FIXED";
+  base_lots?: number;
+  min_lots?: number;
+  max_lots?: number;
+  target_micro_profit_usd?: number;
+  bulk_harvesting_enabled?: boolean;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/volume-config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error("Failed to update volume config");
+  return res.json();
+}
+
 export interface MultiAssetPosition {
   id: number;
   side: "LONG" | "SHORT" | "BUY" | "SELL";

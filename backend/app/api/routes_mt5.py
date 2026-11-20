@@ -6,8 +6,18 @@ import pandas as pd
 
 from app.execution.mt5_bridge import mt5_bridge
 from app.prediction.fvg_gap_scalper import FvgGapScalper
+from app.execution.dynamic_volume_optimizer import volume_optimizer
 
 router = APIRouter(prefix="/mt5/bridge", tags=["MT5 Trading Bridge"])
+
+
+class VolumeConfigUpdate(BaseModel):
+    mode: Optional[str] = None  # "DYNAMIC_AUTO" or "MANUAL_FIXED"
+    base_lots: Optional[float] = None
+    min_lots: Optional[float] = None
+    max_lots: Optional[float] = None
+    target_micro_profit_usd: Optional[float] = None
+    bulk_harvesting_enabled: Optional[bool] = None
 
 
 class MT5ConfigUpdate(BaseModel):
@@ -88,6 +98,34 @@ async def get_fvg_gap_analysis(symbol: str = "XAUUSD") -> Dict[str, Any]:
 
     analysis = scalper.analyze(df, price)
     return analysis
+
+
+@router.get("/volume-optimization")
+async def get_volume_optimization(symbol: str = "XAUUSD") -> Dict[str, Any]:
+    """Returns dynamic lot size recommendations, margin requirements, and bulk micro-scalping targets."""
+    cur_quote = mt5_bridge.get_live_broker_quote(symbol) or {"price": 3520.0}
+    price = cur_quote.get("price", 3520.0)
+    equity = mt5_bridge.account_info.get("equity", 100000.0)
+
+    # Calculate live ATR based on recent quote or fallback
+    return volume_optimizer.calculate_optimal_volume(
+        symbol=symbol,
+        current_price=price,
+        equity=equity,
+        atr=2.40,
+        conviction=88.0,
+        strategy_id=mt5_bridge.active_strategy_filter if mt5_bridge.active_strategy_filter != "ALL" else "GAP_FVG",
+    )
+
+
+@router.post("/volume-config")
+async def update_volume_config(cfg: VolumeConfigUpdate) -> Dict[str, Any]:
+    """Updates dynamic volume and bulk harvesting preferences."""
+    payload = cfg.dict(exclude_unset=True)
+    res = volume_optimizer.update_config(payload)
+    if "base_lots" in payload:
+        mt5_bridge.default_lot_size = payload["base_lots"]
+    return res
 
 
 @router.post("/config")

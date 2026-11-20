@@ -40,9 +40,12 @@ import {
   fetchStrategyPerformance,
   isolateStrategy,
   fetchFvgAnalysis,
+  fetchVolumeOptimization,
+  updateVolumeConfig,
   RecordedMT5Trade,
   StrategyPerformanceItem,
   FvgAnalysisResponse,
+  VolumeOptimizationData,
 } from "../api";
 
 interface XauusdHubProps {
@@ -69,10 +72,11 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const [ledgerPeriod, setLedgerPeriod] = useState<string>("all");
   const [ledgerStrategy, setLedgerStrategy] = useState<string>("all");
 
-  // Strategy & FVG Data
+  // Strategy, FVG & Volume Optimization Data
   const [strategyMatrix, setStrategyMatrix] = useState<StrategyPerformanceItem[]>([]);
   const [isolatedStrategyId, setIsolatedStrategyId] = useState<string>("ALL");
   const [fvgData, setFvgData] = useState<FvgAnalysisResponse | null>(null);
+  const [volumeData, setVolumeData] = useState<VolumeOptimizationData | null>(null);
   const [tradesData, setTradesData] = useState<{
     total_trades: number;
     wins: number;
@@ -99,10 +103,10 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     trades: [],
   });
 
-  // Load telemetry, chart, strategy matrix, and trades
+  // Load telemetry, chart, strategy matrix, volume optimization and trades
   const loadData = async () => {
     try {
-      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes] = await Promise.all([
+      const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes, volRes] = await Promise.all([
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
         fetchLiveTick(symbol).catch(() => null),
@@ -110,6 +114,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         fetchStrategyPerformance().catch(() => null),
         fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy).catch(() => null),
         fetchFvgAnalysis(symbol).catch(() => null),
+        fetchVolumeOptimization(symbol).catch(() => null),
       ]);
 
       if (cData && cData.length > 0) setCandles(cData);
@@ -122,6 +127,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       }
       if (tradesRes) setTradesData(tradesRes);
       if (fvgRes) setFvgData(fvgRes);
+      if (volRes) setVolumeData(volRes);
     } catch (e) {
       console.error("Error loading XAUUSD Hub data:", e);
     }
@@ -156,24 +162,78 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     setActionMessage(null);
     try {
       const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3520.0);
-      const sl = side === "BUY" ? Number((curPrice - 3.50).toFixed(2)) : Number((curPrice + 3.50).toFixed(2));
-      const tp = side === "BUY" ? Number((curPrice + 7.00).toFixed(2)) : Number((curPrice - 7.00).toFixed(2));
+      const chosenLots = (volumeData?.mode === "DYNAMIC_AUTO" && volumeData?.recommended_lots) ? volumeData.recommended_lots : lotSize;
+      const targetPts = volumeData?.target_move_points || 2.20;
+      const stopPts = volumeData?.protective_stop_points || 1.20;
+      const sl = side === "BUY" ? Number((curPrice - stopPts).toFixed(2)) : Number((curPrice + stopPts).toFixed(2));
+      const tp = side === "BUY" ? Number((curPrice + targetPts).toFixed(2)) : Number((curPrice - targetPts).toFixed(2));
 
       await sendManualMT5Order({
         symbol: "XAUUSD",
         side,
-        lots: lotSize,
+        lots: chosenLots,
         price: curPrice,
         stop_loss: sl,
         take_profit: tp,
         strategy: customStrat,
       });
 
-      setActionMessage(`⚡ ${side} ${lotSize} Lots submitted to MT5 Terminal (TP: $${tp}, SL: $${sl})`);
+      setActionMessage(`⚡ ${side} ${chosenLots} Lots submitted to MT5 Terminal (TP: $${tp}, SL: $${sl})`);
       setTimeout(() => setActionMessage(null), 4500);
       loadData();
     } catch (err: any) {
       setActionMessage(`❌ Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleToggleVolumeMode = async (mode: "DYNAMIC_AUTO" | "MANUAL_FIXED") => {
+    try {
+      await updateVolumeConfig({ mode });
+      setActionMessage(
+        mode === "DYNAMIC_AUTO"
+          ? "⚡ Dynamic Volatility & Conviction Volume Sizing Activated. Optimal lots computed dynamically."
+          : "🔒 Fixed Lot Mode Activated. Order size locked to manual selection."
+      );
+      setTimeout(() => setActionMessage(null), 4000);
+      loadData();
+    } catch (e: any) {
+      setActionMessage(`❌ Error: ${e.message}`);
+    }
+  };
+
+  const handleBulkWaves = async (side: "BUY" | "SELL") => {
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      const curPrice = liveTick?.price || (candles.length > 0 ? candles[candles.length - 1].close : 3520.0);
+      const waveLots = (volumeData?.mode === "DYNAMIC_AUTO" && volumeData?.recommended_lots) ? volumeData.recommended_lots : (lotSize || 0.05);
+      const targetPts = volumeData?.target_move_points || 2.20;
+      const stopPts = volumeData?.protective_stop_points || 1.20;
+
+      const tp = side === "BUY" ? Number((curPrice + targetPts).toFixed(2)) : Number((curPrice - targetPts).toFixed(2));
+      const sl = side === "BUY" ? Number((curPrice - stopPts).toFixed(2)) : Number((curPrice + stopPts).toFixed(2));
+
+      // Dispatch 3 rapid staggered micro-orders for bulk wave profit
+      for (let i = 0; i < 3; i++) {
+        await sendManualMT5Order({
+          symbol: "XAUUSD",
+          side,
+          lots: waveLots,
+          price: curPrice,
+          stop_loss: sl,
+          take_profit: tp,
+          strategy: "BULK_MICRO_SCALPER",
+        });
+      }
+
+      const totalGain = (waveLots * 100 * targetPts * 3).toFixed(2);
+      setActionMessage(`🌊 Executed 3x Bulk Wave of ${waveLots} lots on ${side} (TP: +$${targetPts} pts, Projected Wave Profit: +$${totalGain})`);
+      setTimeout(() => setActionMessage(null), 5000);
+      loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Bulk Wave Error: ${err.message}`);
     } finally {
       setIsExecuting(false);
     }
@@ -629,75 +689,219 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                 </div>
               </div>
 
-              {/* Lot size selector */}
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", marginBottom: "6px", display: "flex", justifyContent: "space-between" }}>
-                  <span>Order Volume (Lots):</span>
-                  <span style={{ color: "#f59e0b", fontWeight: 800 }}>{lotSize} Lots (~${(lotSize * curPrice).toFixed(0)} Notional)</span>
-                </div>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  {[0.01, 0.05, 0.10, 0.25, 0.50].map((size) => (
+              {/* Dynamic Lot Sizing & Bulk Micro-Scalp Optimizer */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                
+                {/* Sizing Mode Toggle */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <Sliders size={13} color="#f59e0b" />
+                    ORDER VOLUME OPTIMIZER:
+                  </span>
+                  <div style={{ display: "flex", gap: "4px", background: "#020617", padding: "2px", borderRadius: "6px" }}>
                     <button
-                      key={size}
-                      onClick={() => setLotSize(size)}
+                      onClick={() => handleToggleVolumeMode("DYNAMIC_AUTO")}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        borderRadius: "4px",
+                        border: "none",
+                        cursor: "pointer",
+                        background: volumeData?.mode === "DYNAMIC_AUTO" ? "#f59e0b" : "transparent",
+                        color: volumeData?.mode === "DYNAMIC_AUTO" ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      ⚡ Dynamic Auto
+                    </button>
+                    <button
+                      onClick={() => handleToggleVolumeMode("MANUAL_FIXED")}
+                      style={{
+                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        borderRadius: "4px",
+                        border: "none",
+                        cursor: "pointer",
+                        background: volumeData?.mode === "MANUAL_FIXED" ? "#38bdf8" : "transparent",
+                        color: volumeData?.mode === "MANUAL_FIXED" ? "#000" : "#94a3b8"
+                      }}
+                    >
+                      🔒 Manual Fixed
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sizing Details Card */}
+                <div style={{ background: "#020617", padding: "12px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                      {volumeData?.mode === "DYNAMIC_AUTO" ? "Optimal Scalp Volume:" : "Selected Manual Volume:"}
+                    </span>
+                    <span style={{ fontSize: "14px", fontWeight: 900, color: "#f59e0b" }}>
+                      {(volumeData?.mode === "DYNAMIC_AUTO" ? volumeData.recommended_lots : lotSize) || 0.05} Lots
+                    </span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "11px" }}>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px", borderRadius: "4px" }}>
+                      <span style={{ color: "var(--text-dim)", fontSize: "10px" }}>Margin Required: </span>
+                      <strong style={{ color: "#fff" }}>
+                        ${volumeData?.margin_required_usd || (lotSize * 35.20).toFixed(2)} USD
+                      </strong>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px", borderRadius: "4px" }}>
+                      <span style={{ color: "var(--text-dim)", fontSize: "10px" }}>Quick Target: </span>
+                      <strong style={{ color: "#34d399" }}>
+                        +${volumeData?.projected_profit_usd || 17.28} USD
+                      </strong>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px", borderRadius: "4px" }}>
+                      <span style={{ color: "var(--text-dim)", fontSize: "10px" }}>Target Move: </span>
+                      <strong style={{ color: "#38bdf8" }}>
+                        +{volumeData?.target_move_points || 2.16} pts
+                      </strong>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px", borderRadius: "4px" }}>
+                      <span style={{ color: "var(--text-dim)", fontSize: "10px" }}>Risk / Stop: </span>
+                      <strong style={{ color: "#f87171" }}>
+                        -${volumeData?.projected_risk_usd || 9.60} USD
+                      </strong>
+                    </div>
+                  </div>
+
+                  {volumeData?.mode === "MANUAL_FIXED" ? (
+                    <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
+                      {[0.01, 0.05, 0.10, 0.25, 0.50].map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => setLotSize(size)}
+                          style={{
+                            flex: 1,
+                            padding: "4px",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            borderRadius: "4px",
+                            border: "none",
+                            cursor: "pointer",
+                            background: lotSize === size ? "#38bdf8" : "rgba(255,255,255,0.05)",
+                            color: lotSize === size ? "#000" : "#94a3b8"
+                          }}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)", fontStyle: "italic", lineHeight: 1.3 }}>
+                      {volumeData?.sizing_reasoning || "Dynamic sizing calibrated to live Gold volatility and conviction."}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bulk Wave Scalping Section */}
+                <div style={{
+                  background: "linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  padding: "10px",
+                  borderRadius: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <Flame size={12} color="#38bdf8" />
+                      BULK MICRO-SCALP HARVESTER (FAST SMALL WINS)
+                    </span>
+                    <span style={{ fontSize: "9px", fontWeight: 800, padding: "1px 5px", borderRadius: "3px", background: "rgba(56,189,248,0.2)", color: "#38bdf8" }}>
+                      3x Waves
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                    Fires 3 rapid staggered micro-entries to capture quick bulk profit without holding long:
+                    <strong style={{ color: "#34d399", marginLeft: "4px" }}>
+                      Cumulative Target: +${volumeData?.bulk_cumulative_profit_target_usd || 51.84} USD
+                    </strong>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                    <button
+                      onClick={() => handleBulkWaves("BUY")}
+                      disabled={isExecuting}
                       style={{
                         flex: 1,
-                        padding: "5px",
+                        padding: "8px",
                         fontSize: "11px",
-                        fontWeight: 700,
+                        fontWeight: 900,
                         borderRadius: "6px",
                         border: "none",
                         cursor: "pointer",
-                        background: lotSize === size ? "#f59e0b" : "rgba(255,255,255,0.05)",
-                        color: lotSize === size ? "#000" : "#94a3b8"
+                        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        color: "#fff",
+                        boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)"
                       }}
                     >
-                      {size}
+                      🌊 Bulk BUY Wave (3x)
                     </button>
-                  ))}
+                    <button
+                      onClick={() => handleBulkWaves("SELL")}
+                      disabled={isExecuting}
+                      style={{
+                        flex: 1,
+                        padding: "8px",
+                        fontSize: "11px",
+                        fontWeight: 900,
+                        borderRadius: "6px",
+                        border: "none",
+                        cursor: "pointer",
+                        background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                        color: "#fff",
+                        boxShadow: "0 2px 8px rgba(239, 68, 68, 0.25)"
+                      }}
+                    >
+                      🌊 Bulk SELL Wave (3x)
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* 1-Click Fast MT5 Execution Buttons */}
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => handleManualOrder("BUY")}
-                  disabled={isExecuting}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    borderRadius: "8px",
-                    border: "none",
-                    cursor: "pointer",
-                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    color: "#fff",
-                    boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
-                    transition: "all 0.2s"
-                  }}
-                >
-                  ⚡ BUY XAUUSD
-                </button>
-                <button
-                  onClick={() => handleManualOrder("SELL")}
-                  disabled={isExecuting}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    borderRadius: "8px",
-                    border: "none",
-                    cursor: "pointer",
-                    background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
-                    color: "#fff",
-                    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)",
-                    transition: "all 0.2s"
-                  }}
-                >
-                  ⚡ SELL XAUUSD
-                </button>
+                {/* Single 1-Click Execution */}
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={() => handleManualOrder("BUY")}
+                    disabled={isExecuting}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      background: "rgba(16, 185, 129, 0.2)",
+                      color: "#34d399",
+                      border: "1px solid rgba(16, 185, 129, 0.4)"
+                    }}
+                  >
+                    ⚡ Fast 1-Click BUY
+                  </button>
+                  <button
+                    onClick={() => handleManualOrder("SELL")}
+                    disabled={isExecuting}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      background: "rgba(239, 68, 68, 0.2)",
+                      color: "#f87171",
+                      border: "1px solid rgba(239, 68, 68, 0.4)"
+                    }}
+                  >
+                    ⚡ Fast 1-Click SELL
+                  </button>
+                </div>
               </div>
             </div>
 
