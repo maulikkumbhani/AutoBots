@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,11 +25,21 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Start local database continuous background synchronization engine
+    from app.execution.database_sync import db_sync_manager
+    sync_task = asyncio.create_task(db_sync_manager.run_background_sync(interval_sec=2.0))
+
     # Always start auto-trading bot on startup by default (user can toggle/stop anytime)
     from app.execution.bot_runner import trading_bot
     await trading_bot.start()
 
     yield
+
+    try:
+        db_sync_manager.stop()
+        sync_task.cancel()
+    except Exception:
+        pass
 
     try:
         await trading_bot.stop()

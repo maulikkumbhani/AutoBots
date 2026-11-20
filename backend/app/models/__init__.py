@@ -11,6 +11,7 @@ from app.models.paper_trading import (
     PaperFill,
     PaperPosition,
 )
+from app.models.mt5_trade import MT5TradeRecord, MT5AccountSnapshot, MT5ActivityLog
 
 __all__ = [
     "Base",
@@ -28,4 +29,7 @@ __all__ = [
     "PaperOrder",
     "PaperFill",
     "PaperPosition",
+    "MT5TradeRecord",
+    "MT5AccountSnapshot",
+    "MT5ActivityLog",
 ]

@@ -12,6 +12,7 @@ import logging
 import os
 import random
 import pytz
+from app.execution.database_sync import db_sync_manager
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,10 @@ class MT5BridgeManager:
 
         # Initialize realistic calibrated historical trade journal across all strategies and timeframes
         self._init_calibrated_trade_history()
+
+        # Connect with local SQLite database sync engine and seed historical trades
+        self.db_sync = db_sync_manager
+        self.db_sync.seed_from_existing_history(self.executed_trades)
 
         # Pre-queue initial active XAUUSD automated trade signal using High-Volume Scalper
         self.queue_signal(
@@ -443,6 +448,9 @@ class MT5BridgeManager:
         }
         self.executed_trades.insert(0, active_trade_record)
         self.account_info["open_positions_count"] = len([t for t in self.executed_trades if t.get("status") != "CLOSED"])
+        if hasattr(self, "db_sync"):
+            self.db_sync.record_trade(active_trade_record)
+            self.db_sync.log_activity("ORDER_QUEUED", f"Queued {side} {signal['lots']} lots on {mt5_sym} ({strategy})", ticket=str(new_ticket), symbol=mt5_sym)
         return signal
 
     def _get_mql5_files_dirs(self) -> List[str]:
@@ -610,6 +618,9 @@ class MT5BridgeManager:
         self.pending_signals.clear()
         self.open_mt5_positions.clear()
         self.account_info["open_positions_count"] = 0
+        if hasattr(self, "db_sync"):
+            self.db_sync.seed_from_existing_history(self.executed_trades)
+            self.db_sync.log_activity("CLOSE_ALL", "Emergency CLOSE ALL executed. All positions closed on broker.")
         return {"status": "SUCCESS", "message": "Emergency close all command sent to MT5. All positions marked CLOSED."}
 
     def get_current_spot(self, symbol: str = "XAUUSD") -> float:
@@ -672,6 +683,10 @@ class MT5BridgeManager:
         # Update open positions count
         open_count = len([t for t in self.executed_trades if t.get("status") != "CLOSED"])
         self.account_info["open_positions_count"] = open_count
+
+        if hasattr(self, "db_sync"):
+            self.db_sync.record_trade(matched_trade)
+            self.db_sync.log_activity("POSITION_CLOSED", f"Closed ticket #{matched_trade.get('ticket')} ({reason}) with PnL ${matched_trade['pnl']:.2f}", ticket=t_id_str)
 
         return {
             "status": "SUCCESS",

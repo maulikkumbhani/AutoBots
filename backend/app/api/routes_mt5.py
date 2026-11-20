@@ -8,6 +8,7 @@ from app.execution.mt5_bridge import mt5_bridge
 from app.prediction.fvg_gap_scalper import FvgGapScalper
 from app.execution.dynamic_volume_optimizer import volume_optimizer
 from app.execution.micro_burst_scalper import burst_engine
+from app.execution.database_sync import db_sync_manager
 
 router = APIRouter(prefix="/mt5/bridge", tags=["MT5 Trading Bridge"])
 
@@ -281,3 +282,57 @@ async def execute_micro_burst(req: MicroBurstRequest) -> Dict[str, Any]:
         stop_per_ticket=req.protective_loss_per_ticket or 0.75,
         lots_per_ticket=req.lots_per_ticket or 0.02,
     )
+
+
+@router.get("/database/status")
+async def get_database_status() -> Dict[str, Any]:
+    """Returns local SQLite database connection status, disk size, and table row counts."""
+    return db_sync_manager.get_database_stats()
+
+
+@router.get("/database/trades")
+async def get_database_trades(
+    timeframe: Optional[str] = Query("all"),
+    period: Optional[str] = Query("all"),
+    strategy: Optional[str] = Query("all"),
+    status: Optional[str] = Query("all"),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+) -> Dict[str, Any]:
+    """Queries persistent trades stored in the local SQLite database."""
+    return db_sync_manager.get_trades(
+        timeframe=timeframe,
+        period=period,
+        strategy=strategy,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/database/activity")
+async def get_database_activity(limit: int = Query(50, ge=1, le=500)) -> List[Dict[str, Any]]:
+    """Returns recent operational and trading activity audit records from local SQLite."""
+    return db_sync_manager.get_recent_activities(limit=limit)
+
+
+@router.get("/database/equity-curve")
+async def get_database_equity_curve(limit: int = Query(100, ge=1, le=1000)) -> List[Dict[str, Any]]:
+    """Returns historical balance and equity curve snapshots from local SQLite."""
+    return db_sync_manager.get_equity_curve(limit=limit)
+
+
+@router.post("/database/sync-now")
+async def force_database_sync() -> Dict[str, Any]:
+    """Forces an immediate synchronization of in-memory trades and file telemetry to SQLite."""
+    mt5_bridge.sync_file_telemetry()
+    if mt5_bridge.account_info:
+        db_sync_manager.record_account_snapshot(mt5_bridge.account_info)
+    seeded = db_sync_manager.seed_from_existing_history(mt5_bridge.executed_trades)
+    db_sync_manager.log_activity("MANUAL_SYNC", f"User manually synchronized {seeded} trades to local database.")
+    stats = db_sync_manager.get_database_stats()
+    return {
+        "status": "SUCCESS",
+        "message": f"Successfully synchronized {seeded} trades with local SQLite database.",
+        "database_stats": stats,
+    }

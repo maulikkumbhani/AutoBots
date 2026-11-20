@@ -893,6 +893,56 @@ export async function clearMasterAuditStore(): Promise<any> {
 
 export async function fetchOrderBlockAnalysis(symbol = "NIFTY 50", timeframe = "15m"): Promise<any> {
   const res = await fetch(`${API_BASE}/order-block/analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
-  if (!res.ok) throw new Error(`Failed to fetch Order Block analysis for ${symbol}`);
+  if (!res.ok) throw new Error("Failed to fetch order block analysis");
+  return res.json();
+}
+
+export interface DatabaseStatusResponse {
+  status: string;
+  database_type: string;
+  database_path: string;
+  database_size_kb: number;
+  total_trades: number;
+  open_trades: number;
+  closed_trades: number;
+  total_snapshots: number;
+  total_activities: number;
+  last_sync_time: string | null;
+  is_background_sync_active: boolean;
+}
+
+export interface DatabaseActivityItem {
+  id: number;
+  event_type: string;
+  ticket?: string | null;
+  symbol: string;
+  message: string;
+  details?: string | null;
+  timestamp: string;
+}
+
+export async function fetchDatabaseStatus(): Promise<DatabaseStatusResponse> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/database/status`);
+  if (!res.ok) throw new Error("Failed to fetch database status");
+  return res.json();
+}
+
+export async function fetchDatabaseActivity(limit: number = 50): Promise<DatabaseActivityItem[]> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/database/activity?limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch database activity log");
+  return res.json();
+}
+
+export async function fetchDatabaseEquityCurve(limit: number = 100): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/database/equity-curve?limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch database equity curve");
+  return res.json();
+}
+
+export async function syncDatabaseNow(): Promise<{ status: string; message: string; database_stats: DatabaseStatusResponse }> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/database/sync-now`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to synchronize local database");
   return res.json();
 }
