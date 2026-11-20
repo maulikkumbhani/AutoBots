@@ -228,3 +228,4 @@ class MicroBurstScalperEngine:
 
 # Singleton instance
 burst_engine = MicroBurstScalperEngine()
+

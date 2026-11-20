@@ -504,14 +504,19 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, dou
    double defaultTpMove = InpTakeProfitPts;
    double defaultSlMove = InpStopLossPts;
 
+   // Mandatory broker stop distance safety check: GUARANTEES HARD NON-ZERO SL ON BROKER
+   long stopLevel = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+   double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+   double minStopDist = MathMax(defaultSlMove, (stopLevel + 10) * pt);
+   if (minStopDist < 1.50) minStopDist = 1.50;
+
    if (side == "BUY")
    {
       execPrice = ask;
-      // If absolute price passed, use directly; otherwise calculate relative distance
-      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
-      else sl = NormalizeDouble(execPrice - defaultSlMove, digits);
+      if (sl_val > 1000.0 && sl_val < execPrice - 0.50) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice - minStopDist, digits);
 
-      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      if (tp_val > 1000.0 && tp_val > execPrice + 0.50) tp = NormalizeDouble(tp_val, digits);
       else tp = NormalizeDouble(execPrice + defaultTpMove, digits);
 
       success = ExtTrade.Buy(lots, sym, execPrice, sl, tp, comment);
@@ -519,10 +524,10 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, dou
    else if (side == "SELL")
    {
       execPrice = bid;
-      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
-      else sl = NormalizeDouble(execPrice + defaultSlMove, digits);
+      if (sl_val > 1000.0 && sl_val > execPrice + 0.50) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice + minStopDist, digits);
 
-      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      if (tp_val > 1000.0 && tp_val < execPrice - 0.50) tp = NormalizeDouble(tp_val, digits);
       else tp = NormalizeDouble(execPrice - defaultTpMove, digits);
 
       success = ExtTrade.Sell(lots, sym, execPrice, sl, tp, comment);

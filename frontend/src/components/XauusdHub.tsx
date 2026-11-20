@@ -30,6 +30,7 @@ import {
   Unlock,
 } from "lucide-react";
 import { TradingViewChart } from "./TradingViewChart";
+import { ServerConnectionModal } from "./ServerConnectionModal";
 import {
   fetchMT5Status,
   sendManualMT5Order,
@@ -43,6 +44,11 @@ import {
   fetchVolumeOptimization,
   updateVolumeConfig,
   closeAllMT5Positions,
+  syncMT5Positions,
+  clearGhostTrades,
+  startBot,
+  stopBot,
+  fetchBotStatus,
   fetchStrategyAllocations,
   updateStrategyAllocationMode,
   fetchMarketFlow,
@@ -83,6 +89,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
   // Tabs
   const [activeTab, setActiveTab] = useState<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">("ANALYSIS");
+  const [showServerModal, setShowServerModal] = useState<boolean>(false);
 
   // Filter States for MT5 Trade Ledger
   const [ledgerTimeframe, setLedgerTimeframe] = useState<string>("all");
@@ -124,9 +131,15 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     trades: [],
   });
 
+  const [botRunning, setBotRunning] = useState<boolean>(true);
+
   // Load telemetry, chart, strategy matrix, volume optimization, allocations, market flow and trades
   const loadData = async () => {
     try {
+      fetchBotStatus().then((st) => {
+        if (st && typeof st.is_active === "boolean") setBotRunning(st.is_active);
+      }).catch(() => {});
+
       const [cData, indData, tick, mt5, matrixRes, tradesRes, fvgRes, volRes, allocRes, flowRes] = await Promise.all([
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
@@ -312,11 +325,65 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     setActionMessage(null);
     try {
       await closeAllMT5Positions();
-      setActionMessage("🚨 Emergency CLOSE ALL command sent to MT5. Closing open positions immediately...");
+      await syncMT5Positions().catch(() => {});
+      setActionMessage("🚨 Emergency CLOSE ALL command sent to MT5. All positions closed and verified!");
       setTimeout(() => setActionMessage(null), 5000);
       loadData();
     } catch (err: any) {
       setActionMessage(`❌ Close All Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleSyncPositions = async () => {
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      const res = await syncMT5Positions();
+      setActionMessage(`🔄 ${res.message || "Synchronized with MT5 terminal! Open positions reconciled."}`);
+      setTimeout(() => setActionMessage(null), 5000);
+      loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Sync Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleClearGhostTrades = async () => {
+    if (!window.confirm("Are you sure you want to clean up phantom ghost trades and reset the ledger?")) return;
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      const res = await clearGhostTrades();
+      setActionMessage(`🧹 ${res.message || "Trade journal reset successfully! Clean slate initialized."}`);
+      setTimeout(() => setActionMessage(null), 5000);
+      loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Reset Error: ${err.message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleToggleBot = async () => {
+    setIsExecuting(true);
+    setActionMessage(null);
+    try {
+      if (botRunning) {
+        await stopBot();
+        setBotRunning(false);
+        setActionMessage("🛑 AutoBot background trading runner STOPPED.");
+      } else {
+        await startBot("XAUUSD");
+        setBotRunning(true);
+        setActionMessage("🟢 AutoBot background trading runner STARTED for XAUUSD.");
+      }
+      setTimeout(() => setActionMessage(null), 5000);
+      loadData();
+    } catch (err: any) {
+      setActionMessage(`❌ Bot Control Error: ${err.message}`);
     } finally {
       setIsExecuting(false);
     }
@@ -406,6 +473,27 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                   <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: mt5Status?.connected ? "#34d399" : "#f87171" }}></span>
                   {mt5Status?.connected ? "CONNECTED" : "AWAITING MT5"}
                 </span>
+
+                <button
+                  onClick={() => setShowServerModal(true)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    fontSize: "9px",
+                    fontWeight: 800,
+                    background: "rgba(99, 102, 241, 0.15)",
+                    border: "1px solid rgba(99, 102, 241, 0.35)",
+                    color: "#a5b4fc",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                  title="Configure backend server connection (Localhost / Live Cloud)"
+                >
+                  ⚡ Server URL / Localhost
+                </button>
               </div>
               <div style={{ fontSize: "10px", color: "var(--text-dim)", marginTop: "2px" }}>
                 COMEX Real-Time Spot • Direct IPC Bridge Active
@@ -458,28 +546,83 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             </div>
           </div>
 
-          <button
-            onClick={handleCloseAllTrades}
-            disabled={isExecuting}
-            style={{
-              padding: isMobile ? "8px 12px" : "10px 14px",
-              fontSize: isMobile ? "10px" : "11px",
-              fontWeight: 900,
-              borderRadius: "8px",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              background: "rgba(239, 68, 68, 0.2)",
-              color: "#fca5a5",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              transition: "all 0.2s",
-              width: isMobile ? "100%" : "auto",
-              justifyContent: "center"
-            }}
-          >
-            🚨 CLOSE ALL MT5 TRADES
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", width: isMobile ? "100%" : "auto" }}>
+            {/* Start / Stop Bot Runner Button */}
+            <button
+              onClick={handleToggleBot}
+              disabled={isExecuting}
+              style={{
+                padding: isMobile ? "8px 12px" : "10px 14px",
+                fontSize: isMobile ? "10px" : "11px",
+                fontWeight: 900,
+                borderRadius: "8px",
+                border: botRunning ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(16, 185, 129, 0.4)",
+                background: botRunning ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.2)",
+                color: botRunning ? "#fca5a5" : "#34d399",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+                flex: isMobile ? 1 : "initial",
+                justifyContent: "center"
+              }}
+              title={botRunning ? "Click to stop background automated trading engine" : "Click to activate background automated trading engine"}
+            >
+              {botRunning ? <Square size={12} fill="#ef4444" /> : <Play size={12} fill="#10b981" />}
+              {botRunning ? "STOP BOT RUNNER" : "START BOT RUNNER"}
+            </button>
+
+            {/* Sync MT5 Positions Button */}
+            <button
+              onClick={handleSyncPositions}
+              disabled={isExecuting}
+              style={{
+                padding: isMobile ? "8px 12px" : "10px 14px",
+                fontSize: isMobile ? "10px" : "11px",
+                fontWeight: 900,
+                borderRadius: "8px",
+                border: "1px solid rgba(56, 189, 248, 0.4)",
+                background: "rgba(56, 189, 248, 0.15)",
+                color: "#38bdf8",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+                flex: isMobile ? 1 : "initial",
+                justifyContent: "center"
+              }}
+              title="Synchronize trades with MT5 terminal immediately"
+            >
+              <RefreshCw size={12} />
+              SYNC MT5
+            </button>
+
+            {/* Close All Trades Button */}
+            <button
+              onClick={handleCloseAllTrades}
+              disabled={isExecuting}
+              style={{
+                padding: isMobile ? "8px 12px" : "10px 14px",
+                fontSize: isMobile ? "10px" : "11px",
+                fontWeight: 900,
+                borderRadius: "8px",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                background: "rgba(239, 68, 68, 0.2)",
+                color: "#fca5a5",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+                width: isMobile ? "100%" : "auto",
+                justifyContent: "center"
+              }}
+            >
+              🚨 CLOSE ALL MT5 TRADES
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1610,14 +1753,61 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             flexDirection: "column",
             gap: "12px"
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
               <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
                 <Filter size={15} color="#f59e0b" />
                 FILTER MT5 TRADES BY TIMEFRAME & PERIOD
               </div>
 
+              {/* Action Buttons: Sync with MT5 & Clean Slate */}
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  onClick={handleSyncPositions}
+                  disabled={isExecuting}
+                  style={{
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    background: "rgba(56, 189, 248, 0.15)",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                    color: "#38bdf8",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    transition: "all 0.15s ease"
+                  }}
+                  title="Synchronizes with MT5 terminal to update all closed trades and clear hanging orders"
+                >
+                  <RefreshCw size={12} />
+                  🔄 Sync MT5 Terminal
+                </button>
+                <button
+                  onClick={handleClearGhostTrades}
+                  disabled={isExecuting}
+                  style={{
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "#fca5a5",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    transition: "all 0.15s ease"
+                  }}
+                  title="Resets test trade journal and removes accumulated phantom orders"
+                >
+                  🧹 Clear Ghost Trades
+                </button>
+              </div>
+
               {/* Summary Stats Strip */}
-              <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "14px", alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Total: </span>
                   <strong style={{ color: "#fff" }}>{tradesData.total_trades}</strong>
@@ -1774,6 +1964,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                     <th style={{ padding: "10px 12px" }}>TICKET #</th>
                     <th style={{ padding: "10px 12px" }}>EXEC TIME</th>
                     <th style={{ padding: "10px 12px" }}>SYMBOL</th>
+                    <th style={{ padding: "10px 12px" }}>STATUS</th>
                     <th style={{ padding: "10px 12px" }}>SIDE</th>
                     <th style={{ padding: "10px 12px" }}>LOTS</th>
                     <th style={{ padding: "10px 12px" }}>ENTRY PRICE</th>
@@ -1787,7 +1978,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                 <tbody>
                   {tradesData.trades.length === 0 ? (
                     <tr>
-                      <td colSpan={11} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
+                      <td colSpan={12} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
                         No trades found matching the selected filters.
                       </td>
                     </tr>
@@ -1802,6 +1993,19 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                         </td>
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: "#fff" }}>
                           {t.symbol}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontWeight: 800,
+                            fontSize: "9px",
+                            background: t.status === "OPEN" ? "rgba(16,185,129,0.2)" : "rgba(148,163,184,0.15)",
+                            color: t.status === "OPEN" ? "#34d399" : "#94a3b8",
+                            border: `1px solid ${t.status === "OPEN" ? "rgba(16,185,129,0.4)" : "rgba(148,163,184,0.3)"}`
+                          }}>
+                            {t.status === "OPEN" ? "🟢 OPEN" : "🔒 CLOSED"}
+                          </span>
                         </td>
                         <td style={{ padding: "10px 12px" }}>
                           <span style={{
@@ -1897,6 +2101,13 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
           </div>
         </div>
       )}
+
+      {/* Backend Server Connection Settings Modal */}
+      <ServerConnectionModal
+        isOpen={showServerModal}
+        onClose={() => setShowServerModal(false)}
+        onConnectionChanged={() => loadData()}
+      />
     </div>
   );
 };

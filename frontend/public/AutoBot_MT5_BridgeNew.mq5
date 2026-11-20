@@ -18,12 +18,13 @@ input int      InpPollIntervalSec   = 1;                       // Fast Poll Inte
 input ulong    InpMagicNumber       = 888999;                  // Unique Magic Number
 input double   InpDefaultLots       = 0.05;                    // Default Lot Size
 input int      InpDeviationPoints   = 20;                      // Slippage Tolerance (Points)
-input int      InpMaxOpenPositions  = 2;                       // Strict Max Open Positions
+input int      InpMaxOpenPositions  = 50;                      // Max Open Positions (supports up to 50x micro-bursts)
 
 input group "=== Micro-Profit Scalping & Risk Guards ==="
 input double   InpTakeProfitPts     = 2.20;                    // Micro-Scalp TP in USD ($2.20 on Gold)
 input double   InpStopLossPts       = 1.50;                    // Micro-Scalp SL in USD ($1.50 on Gold)
-input double   InpQuickProfitClose  = 10.00;                   // Auto-Harvest Profit in USD per trade
+input double   InpSubDollarProfit   = 0.50;                    // Sub-Dollar Micro-Burst Quick Profit Harvest ($0.50)
+input double   InpQuickProfitClose  = 10.00;                   // Standard Auto-Harvest Profit in USD per trade
 input double   InpMaxLossClose      = 12.50;                   // Hard Stop Loss in USD per trade
 input bool     InpTrailingStop      = true;                    // Enable Dynamic Trailing & Break-Even
 input bool     InpAutonomousScalper = true;                    // Autonomous EMA 9/21 Micro Scalper
@@ -263,10 +264,13 @@ void ManageOpenPositions()
       double currentTP = PositionGetDouble(POSITION_TP);
       double profit    = PositionGetDouble(POSITION_PROFIT);
 
-      // 1. AUTO-HARVEST QUICK PROFIT: If profit >= $10.00, close immediately to secure cash
-      if (profit >= InpQuickProfitClose)
+      // 1. AUTO-HARVEST QUICK PROFIT: Sub-dollar ($0.50) for Burst orders; $10.00 for standard scalps
+      string posComment = PositionGetString(POSITION_COMMENT);
+      double harvestThreshold = (StringFind(posComment, "Burst") >= 0) ? InpSubDollarProfit : InpQuickProfitClose;
+
+      if (profit >= harvestThreshold)
       {
-         PrintFormat("💰 [AutoBot PROFIT HARVEST] Position #%I64u reached +$%.2f profit! Locking in profit now.", ticket, profit);
+         PrintFormat("💰 [AutoBot PROFIT HARVEST] Position #%I64u (%s) reached +$%.2f profit! Locking in profit now.", ticket, posComment, profit);
          ExtTrade.PositionClose(ticket);
          continue;
       }
@@ -500,14 +504,19 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, dou
    double defaultTpMove = InpTakeProfitPts;
    double defaultSlMove = InpStopLossPts;
 
+   // Mandatory broker stop distance safety check: GUARANTEES HARD NON-ZERO SL ON BROKER
+   long stopLevel = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+   double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+   double minStopDist = MathMax(defaultSlMove, (stopLevel + 10) * pt);
+   if (minStopDist < 1.50) minStopDist = 1.50;
+
    if (side == "BUY")
    {
       execPrice = ask;
-      // If absolute price passed, use directly; otherwise calculate relative distance
-      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
-      else sl = NormalizeDouble(execPrice - defaultSlMove, digits);
+      if (sl_val > 1000.0 && sl_val < execPrice - 0.50) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice - minStopDist, digits);
 
-      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      if (tp_val > 1000.0 && tp_val > execPrice + 0.50) tp = NormalizeDouble(tp_val, digits);
       else tp = NormalizeDouble(execPrice + defaultTpMove, digits);
 
       success = ExtTrade.Buy(lots, sym, execPrice, sl, tp, comment);
@@ -515,10 +524,10 @@ void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, dou
    else if (side == "SELL")
    {
       execPrice = bid;
-      if (sl_val > 1000.0) sl = NormalizeDouble(sl_val, digits);
-      else sl = NormalizeDouble(execPrice + defaultSlMove, digits);
+      if (sl_val > 1000.0 && sl_val > execPrice + 0.50) sl = NormalizeDouble(sl_val, digits);
+      else sl = NormalizeDouble(execPrice + minStopDist, digits);
 
-      if (tp_val > 1000.0) tp = NormalizeDouble(tp_val, digits);
+      if (tp_val > 1000.0 && tp_val < execPrice - 0.50) tp = NormalizeDouble(tp_val, digits);
       else tp = NormalizeDouble(execPrice - defaultTpMove, digits);
 
       success = ExtTrade.Sell(lots, sym, execPrice, sl, tp, comment);

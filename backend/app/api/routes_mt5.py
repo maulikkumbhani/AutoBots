@@ -160,6 +160,18 @@ async def close_all_positions() -> Dict[str, Any]:
     return mt5_bridge.close_all_positions()
 
 
+@router.post("/sync-positions")
+async def sync_mt5_positions() -> Dict[str, Any]:
+    """Synchronizes open and closed positions with MT5 terminal and resolves hanging trades."""
+    return mt5_bridge.sync_positions()
+
+
+@router.post("/clear-trades")
+async def clear_ghost_trades() -> Dict[str, Any]:
+    """Clears accumulated ghost/phantom trades and resets the trade recording journal."""
+    return mt5_bridge.clear_ghost_trades()
+
+
 @router.post("/config")
 async def update_mt5_config(cfg: MT5ConfigUpdate) -> Dict[str, Any]:
     """Updates configuration for MT5 automated trading bridge."""

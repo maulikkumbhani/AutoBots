@@ -600,6 +600,24 @@ export async function closeAllMT5Positions(): Promise<any> {
   return res.json();
 }
 
+export async function syncMT5Positions(): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/sync-positions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to synchronize MT5 positions");
+  return res.json();
+}
+
+export async function clearGhostTrades(): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/clear-trades`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to reset ghost trades");
+  return res.json();
+}
+
 export async function fetchVolumeOptimization(symbol: string = "XAUUSD"): Promise<VolumeOptimizationData> {
   const res = await fetch(`${API_BASE}/mt5/bridge/volume-optimization?symbol=${encodeURIComponent(symbol)}`);
   if (!res.ok) throw new Error("Failed to fetch volume optimization");
