@@ -17,17 +17,26 @@ export const getApiBase = (): string => {
     if (custom && custom.trim()) {
       return custom.trim().replace(/\/+$/, "") + "/api/v1";
     }
-  }
-  const envUrl = (import.meta as any).env?.VITE_API_BASE_URL;
-  if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, "") + "/api/v1";
+    const envUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+    if (envUrl && envUrl.trim()) {
+      return envUrl.trim().replace(/\/+$/, "") + "/api/v1";
+    }
+    // Production Cloud Fallback: If hosted on Vercel or any remote domain, connect to Render backend
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return "https://autobots-quant-backend.onrender.com/api/v1";
+    }
   }
   return "http://localhost:8000/api/v1";
 };
 
 export const getStoredApiUrl = (): string => {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("autobots_api_url") || "http://localhost:8000";
+    const custom = localStorage.getItem("autobots_api_url");
+    if (custom && custom.trim()) return custom;
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return "https://autobots-quant-backend.onrender.com";
+    }
+    return "http://localhost:8000";
   }
   return "http://localhost:8000";
 };
