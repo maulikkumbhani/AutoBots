@@ -71,6 +71,15 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(typeof window !== "undefined" ? window.innerWidth < 900 : false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 900);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Tabs
   const [activeTab, setActiveTab] = useState<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">("ANALYSIS");
@@ -329,7 +338,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const isNetProfitPositive = netProfit >= 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", maxWidth: "1600px", margin: "0 auto", color: "#f8fafc" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? "12px" : "16px", padding: isMobile ? "8px" : "16px", maxWidth: "1600px", margin: "0 auto", color: "#f8fafc", width: "100%", boxSizing: "border-box" }}>
       
       {/* TOP HEADER */}
       <div style={{
@@ -341,22 +350,22 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)",
         border: "1px solid rgba(245, 158, 11, 0.25)",
         borderRadius: "14px",
-        padding: "16px 20px",
+        padding: isMobile ? "12px" : "16px 20px",
         boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "8px" : "16px", flexWrap: "wrap" }}>
           <button
             onClick={onBackToMain}
             className="btn btn-outline"
             style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(255,255,255,0.15)" }}
           >
-            ← Back to Terminal
+            ← Back
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{
-              width: "42px",
-              height: "42px",
+              width: isMobile ? "34px" : "42px",
+              height: isMobile ? "34px" : "42px",
               borderRadius: "10px",
               background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
               display: "flex",
@@ -364,29 +373,29 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
               justifyContent: "center",
               boxShadow: "0 4px 14px rgba(245, 158, 11, 0.4)",
             }}>
-              <span style={{ fontSize: "20px" }}>🪙</span>
+              <span style={{ fontSize: isMobile ? "16px" : "20px" }}>🪙</span>
             </div>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "20px", fontWeight: 900, color: "#fff", letterSpacing: "0.5px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: isMobile ? "16px" : "20px", fontWeight: 900, color: "#fff", letterSpacing: "0.5px" }}>
                   XAUUSD (GOLD SPOT)
                 </span>
                 <span style={{
-                  fontSize: "10px",
+                  fontSize: "9px",
                   fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: "6px",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
                   background: "rgba(245, 158, 11, 0.15)",
                   color: "#f59e0b",
                   border: "1px solid rgba(245, 158, 11, 0.3)"
                 }}>
-                  MT5 LIVE ENGINE
+                  MT5 LIVE
                 </span>
                 <span style={{
-                  fontSize: "10px",
+                  fontSize: "9px",
                   fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: "6px",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
                   background: mt5Status?.connected ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)",
                   color: mt5Status?.connected ? "#34d399" : "#f87171",
                   border: `1px solid ${mt5Status?.connected ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
@@ -394,52 +403,52 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                   alignItems: "center",
                   gap: "4px"
                 }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mt5Status?.connected ? "#34d399" : "#f87171" }}></span>
-                  {mt5Status?.connected ? "MT5 CONNECTED" : "AWAITING MT5 TERMINAL"}
+                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: mt5Status?.connected ? "#34d399" : "#f87171" }}></span>
+                  {mt5Status?.connected ? "CONNECTED" : "AWAITING MT5"}
                 </span>
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
-                Institutional COMEX / ICE Real-Time Spot Data • Direct IPC Bridge Active
+              <div style={{ fontSize: "10px", color: "var(--text-dim)", marginTop: "2px" }}>
+                COMEX Real-Time Spot • Direct IPC Bridge Active
               </div>
             </div>
           </div>
         </div>
 
         {/* Live Spot Price & Profit Metrics */}
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "12px" : "24px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Gold Spot (USD)
+            <div style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase" }}>
+              Gold Spot
             </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-              <span style={{ fontSize: "24px", fontWeight: 900, color: "#fff", fontFamily: "monospace" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+              <span style={{ fontSize: isMobile ? "18px" : "24px", fontWeight: 900, color: "#fff", fontFamily: "monospace" }}>
                 ${curPrice.toFixed(2)}
               </span>
               <span style={{
-                fontSize: "12px",
+                fontSize: "11px",
                 fontWeight: 800,
                 color: isPositive ? "#34d399" : "#f87171",
                 display: "flex",
                 alignItems: "center"
               }}>
-                {isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                {isPositive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                 {changePct >= 0 ? `+${changePct.toFixed(2)}%` : `${changePct.toFixed(2)}%`}
               </span>
             </div>
           </div>
 
-          <div style={{ borderLeft: "1px solid rgba(255,255,255,0.1)", paddingLeft: "20px" }}>
-            <div style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase" }}>
-              MT5 Demo Account Equity
+          <div style={{ borderLeft: "1px solid rgba(255,255,255,0.1)", paddingLeft: isMobile ? "10px" : "20px" }}>
+            <div style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase" }}>
+              Equity
             </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-              <span style={{ fontSize: "22px", fontWeight: 900, color: "#38bdf8", fontFamily: "monospace" }}>
-                ${equity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+              <span style={{ fontSize: isMobile ? "17px" : "22px", fontWeight: 900, color: "#38bdf8", fontFamily: "monospace" }}>
+                ${equity.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
               <span style={{
-                fontSize: "11px",
+                fontSize: "10px",
                 fontWeight: 800,
-                padding: "2px 6px",
+                padding: "2px 5px",
                 borderRadius: "4px",
                 background: isNetProfitPositive ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
                 color: isNetProfitPositive ? "#34d399" : "#f87171"
@@ -453,8 +462,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             onClick={handleCloseAllTrades}
             disabled={isExecuting}
             style={{
-              padding: "10px 14px",
-              fontSize: "11px",
+              padding: isMobile ? "8px 12px" : "10px 14px",
+              fontSize: isMobile ? "10px" : "11px",
               fontWeight: 900,
               borderRadius: "8px",
               border: "1px solid rgba(239, 68, 68, 0.4)",
@@ -464,7 +473,9 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              transition: "all 0.2s"
+              transition: "all 0.2s",
+              width: isMobile ? "100%" : "auto",
+              justifyContent: "center"
             }}
           >
             🚨 CLOSE ALL MT5 TRADES
@@ -492,18 +503,19 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
       {/* NAVIGATION TABS */}
       <div style={{
         display: "flex",
-        gap: "8px",
+        gap: isMobile ? "6px" : "8px",
         background: "rgba(15, 23, 42, 0.6)",
         padding: "6px",
         borderRadius: "10px",
         border: "1px solid rgba(255,255,255,0.06)",
-        overflowX: "auto"
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch"
       }}>
         <button
           onClick={() => setActiveTab("ANALYSIS")}
           style={{
-            padding: "8px 18px",
-            fontSize: "12px",
+            padding: isMobile ? "8px 12px" : "8px 18px",
+            fontSize: isMobile ? "11px" : "12px",
             fontWeight: 800,
             borderRadius: "6px",
             border: "none",
@@ -513,6 +525,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             display: "flex",
             alignItems: "center",
             gap: "6px",
+            whiteSpace: "nowrap",
             transition: "all 0.2s"
           }}
         >
@@ -522,8 +535,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         <button
           onClick={() => setActiveTab("MATRIX")}
           style={{
-            padding: "8px 18px",
-            fontSize: "12px",
+            padding: isMobile ? "8px 12px" : "8px 18px",
+            fontSize: isMobile ? "11px" : "12px",
             fontWeight: 800,
             borderRadius: "6px",
             border: "none",
@@ -533,6 +546,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             display: "flex",
             alignItems: "center",
             gap: "6px",
+            whiteSpace: "nowrap",
             transition: "all 0.2s"
           }}
         >
@@ -542,8 +556,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         <button
           onClick={() => setActiveTab("LEDGER")}
           style={{
-            padding: "8px 18px",
-            fontSize: "12px",
+            padding: isMobile ? "8px 12px" : "8px 18px",
+            fontSize: isMobile ? "11px" : "12px",
             fontWeight: 800,
             borderRadius: "6px",
             border: "none",
@@ -553,6 +567,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             display: "flex",
             alignItems: "center",
             gap: "6px",
+            whiteSpace: "nowrap",
             transition: "all 0.2s"
           }}
         >
@@ -562,8 +577,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         <button
           onClick={() => setActiveTab("SETUP")}
           style={{
-            padding: "8px 18px",
-            fontSize: "12px",
+            padding: isMobile ? "8px 12px" : "8px 18px",
+            fontSize: isMobile ? "11px" : "12px",
             fontWeight: 800,
             borderRadius: "6px",
             border: "none",
@@ -573,6 +588,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             display: "flex",
             alignItems: "center",
             gap: "6px",
+            whiteSpace: "nowrap",
             transition: "all 0.2s"
           }}
         >
@@ -582,7 +598,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
       {/* TAB 1: CHART & LIVE ANALYSIS */}
       {activeTab === "ANALYSIS" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.7fr 1fr", gap: "16px" }}>
           
           {/* Main Chart Column */}
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -633,7 +649,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
             {/* Candlestick Chart */}
             <div style={{
-              height: "440px",
+              height: isMobile ? "320px" : "440px",
               background: "#020617",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -690,7 +706,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                   </span>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: "10px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
                   <div>
                     <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>ENTRY TARGET</div>
                     <div style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>${fvgData.entry_price.toFixed(2)}</div>
@@ -1472,7 +1488,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
           </div>
 
           {/* Strategy Cards Grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(300px, 1fr))", gap: "14px" }}>
             {strategyMatrix.map((s) => (
               <div
                 key={s.strategy_id}
@@ -1628,7 +1644,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             </div>
 
             {/* Filter Pills */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: "12px", background: "#020617", padding: "12px", borderRadius: "8px" }}>
               
               {/* Timeframe Filter */}
               <div>
@@ -1751,8 +1767,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
             borderRadius: "12px",
             overflow: "hidden"
           }}>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", textAlign: "left" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", minWidth: isMobile ? "720px" : "100%", borderCollapse: "collapse", fontSize: "11px", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "rgba(30, 41, 59, 0.8)", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "var(--text-dim)" }}>
                     <th style={{ padding: "10px 12px" }}>TICKET #</th>
