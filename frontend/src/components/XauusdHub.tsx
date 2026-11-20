@@ -62,6 +62,7 @@ import {
   StrategyAllocationItem,
   MarketFlowAnalysisResponse,
 } from "../api";
+import { getStoredItem, setStoredItem } from "../utils/storage";
 
 interface XauusdHubProps {
   onBackToMain: () => void;
@@ -69,12 +70,16 @@ interface XauusdHubProps {
 
 export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   const symbol = "XAUUSD";
-  const [timeframe, setTimeframe] = useState("15m");
+  const [timeframe, setTimeframe] = useState<string>(() =>
+    getStoredItem<string>("xau_timeframe", "15m")
+  );
   const [candles, setCandles] = useState<any[]>([]);
   const [indicators, setIndicators] = useState<any>(null);
   const [liveTick, setLiveTick] = useState<any>(null);
   const [mt5Status, setMt5Status] = useState<any>(null);
-  const [lotSize, setLotSize] = useState<number>(0.05);
+  const [lotSize, setLotSize] = useState<number>(() =>
+    getStoredItem<number>("xau_lotsize", 0.05)
+  );
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
@@ -89,25 +94,44 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
   }, []);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">("ANALYSIS");
+  const [activeTab, setActiveTab] = useState<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">(() =>
+    getStoredItem<"ANALYSIS" | "MATRIX" | "LEDGER" | "SETUP">("xau_activetab", "ANALYSIS")
+  );
   const [showServerModal, setShowServerModal] = useState<boolean>(false);
 
   // Filter States for MT5 Trade Ledger
-  const [ledgerTimeframe, setLedgerTimeframe] = useState<string>("all");
-  const [ledgerPeriod, setLedgerPeriod] = useState<string>("all");
-  const [ledgerStrategy, setLedgerStrategy] = useState<string>("all");
+  const [ledgerTimeframe, setLedgerTimeframe] = useState<string>(() =>
+    getStoredItem<string>("xau_ledger_timeframe", "all")
+  );
+  const [ledgerPeriod, setLedgerPeriod] = useState<string>(() =>
+    getStoredItem<string>("xau_ledger_period", "all")
+  );
+  const [ledgerStrategy, setLedgerStrategy] = useState<string>(() =>
+    getStoredItem<string>("xau_ledger_strategy", "all")
+  );
+  const [ledgerStatus, setLedgerStatus] = useState<"all" | "open" | "closed">(() =>
+    getStoredItem<"all" | "open" | "closed">("xau_ledger_status", "all")
+  );
 
   // Strategy, FVG, Volume Optimization & Market Flow Data
   const [strategyMatrix, setStrategyMatrix] = useState<StrategyPerformanceItem[]>([]);
-  const [isolatedStrategyId, setIsolatedStrategyId] = useState<string>("ALL");
+  const [isolatedStrategyId, setIsolatedStrategyId] = useState<string>(() =>
+    getStoredItem<string>("xau_isolated_strat", "ALL")
+  );
   const [allocationsData, setAllocationsData] = useState<StrategyAllocationsResponse | null>(null);
   const [marketFlowData, setMarketFlowData] = useState<MarketFlowAnalysisResponse | null>(null);
-  const [burstCount, setBurstCount] = useState<number>(25);
-  const [burstProfitTarget, setBurstProfitTarget] = useState<number>(0.50);
+  const [burstCount, setBurstCount] = useState<number>(() =>
+    getStoredItem<number>("xau_burst_count", 25)
+  );
+  const [burstProfitTarget, setBurstProfitTarget] = useState<number>(() =>
+    getStoredItem<number>("xau_burst_target", 0.50)
+  );
   const [fvgData, setFvgData] = useState<FvgAnalysisResponse | null>(null);
   const [volumeData, setVolumeData] = useState<VolumeOptimizationData | null>(null);
   const [tradesData, setTradesData] = useState<{
     total_trades: number;
+    open_count?: number;
+    closed_count?: number;
     wins: number;
     losses: number;
     win_rate: number;
@@ -120,6 +144,8 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     trades: RecordedMT5Trade[];
   }>({
     total_trades: 0,
+    open_count: 0,
+    closed_count: 0,
     wins: 0,
     losses: 0,
     win_rate: 0,
@@ -131,6 +157,18 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
     current_balance: 100000,
     trades: [],
   });
+
+  // Session & LocalStorage Sync Effects
+  useEffect(() => { setStoredItem("xau_timeframe", timeframe); }, [timeframe]);
+  useEffect(() => { setStoredItem("xau_lotsize", lotSize); }, [lotSize]);
+  useEffect(() => { setStoredItem("xau_activetab", activeTab); }, [activeTab]);
+  useEffect(() => { setStoredItem("xau_ledger_timeframe", ledgerTimeframe); }, [ledgerTimeframe]);
+  useEffect(() => { setStoredItem("xau_ledger_period", ledgerPeriod); }, [ledgerPeriod]);
+  useEffect(() => { setStoredItem("xau_ledger_strategy", ledgerStrategy); }, [ledgerStrategy]);
+  useEffect(() => { setStoredItem("xau_ledger_status", ledgerStatus); }, [ledgerStatus]);
+  useEffect(() => { setStoredItem("xau_burst_count", burstCount); }, [burstCount]);
+  useEffect(() => { setStoredItem("xau_burst_target", burstProfitTarget); }, [burstProfitTarget]);
+  useEffect(() => { setStoredItem("xau_isolated_strat", isolatedStrategyId); }, [isolatedStrategyId]);
 
   const [botRunning, setBotRunning] = useState<boolean>(true);
 
@@ -169,7 +207,7 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
         fetchCandles(symbol, timeframe, 15).catch(() => []),
         fetchIndicators(symbol, timeframe, 20).catch(() => []),
         fetchStrategyPerformance().catch(() => null),
-        fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy).catch(() => null),
+        fetchMT5Trades(ledgerTimeframe, ledgerPeriod, ledgerStrategy, ledgerStatus).catch(() => null),
         fetchFvgAnalysis(symbol).catch(() => null),
         fetchVolumeOptimization(symbol).catch(() => null),
         fetchStrategyAllocations().catch(() => null),
@@ -848,11 +886,15 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
 
             {/* Candlestick Chart */}
             <div style={{
-              height: isMobile ? "360px" : "500px",
+              height: isMobile ? "400px" : "540px",
               background: "#020617",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.08)",
-              overflow: "hidden"
+              overflow: "hidden",
+              marginBottom: "20px",
+              display: "flex",
+              flexDirection: "column",
+              position: "relative"
             }}>
               <TradingViewChart
                 symbol="XAUUSD"
@@ -2002,6 +2044,97 @@ export const XauusdHub: React.FC<XauusdHubProps> = ({ onBackToMain }) => {
                   <option value="CONSENSUS_ML">ML Consensus (Medium)</option>
                   <option value="SWING_FLOW">Macro Swing Flow (Long)</option>
                 </select>
+              </div>
+
+              {/* Status Filter & Emergency Actions */}
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "var(--text-dim)", marginBottom: "6px" }}>
+                  TRADE STATUS FILTER & ACTIONS:
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    onClick={() => setLedgerStatus("all")}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: ledgerStatus === "all" ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.1)",
+                      cursor: "pointer",
+                      background: ledgerStatus === "all" ? "rgba(56, 189, 248, 0.2)" : "rgba(255,255,255,0.05)",
+                      color: ledgerStatus === "all" ? "#38bdf8" : "#94a3b8"
+                    }}
+                  >
+                    ALL TRADES ({tradesData.total_trades})
+                  </button>
+
+                  <button
+                    onClick={() => setLedgerStatus("open")}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: ledgerStatus === "open" ? "1px solid #10b981" : "1px solid rgba(255,255,255,0.1)",
+                      cursor: "pointer",
+                      background: ledgerStatus === "open" ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.05)",
+                      color: ledgerStatus === "open" ? "#34d399" : "#94a3b8"
+                    }}
+                  >
+                    🟢 ACTIVE OPEN ({tradesData.open_count || 0})
+                  </button>
+
+                  <button
+                    onClick={() => setLedgerStatus("closed")}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: ledgerStatus === "closed" ? "1px solid #94a3b8" : "1px solid rgba(255,255,255,0.1)",
+                      cursor: "pointer",
+                      background: ledgerStatus === "closed" ? "rgba(148, 163, 184, 0.2)" : "rgba(255,255,255,0.05)",
+                      color: ledgerStatus === "closed" ? "#f1f5f9" : "#94a3b8"
+                    }}
+                  >
+                    🔒 CLOSED ({tradesData.closed_count || 0})
+                  </button>
+
+                  <button
+                    onClick={handleClearGhostTrades}
+                    disabled={isExecuting}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: "1px solid rgba(245, 158, 11, 0.4)",
+                      cursor: "pointer",
+                      background: "rgba(245, 158, 11, 0.15)",
+                      color: "#f59e0b"
+                    }}
+                    title="Clean slate: clear recorded history and reset phantom test records"
+                  >
+                    🧹 RESET JOURNAL
+                  </button>
+
+                  <button
+                    onClick={handleCloseAllTrades}
+                    disabled={isExecuting}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "6px",
+                      border: "1px solid rgba(239, 68, 68, 0.4)",
+                      cursor: "pointer",
+                      background: "rgba(239, 68, 68, 0.2)",
+                      color: "#fca5a5"
+                    }}
+                  >
+                    🚨 CLOSE ALL
+                  </button>
+                </div>
               </div>
             </div>
           </div>

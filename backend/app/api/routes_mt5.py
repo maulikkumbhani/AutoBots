@@ -73,9 +73,10 @@ async def get_recorded_trades(
     timeframe: Optional[str] = Query("all", description="m1, m5, 15m, h1, h4, 1d, 1w, 1m, all"),
     period: Optional[str] = Query("all", description="today, week, month, all"),
     strategy: Optional[str] = Query("all", description="GAP_FVG, SCALPER_EMA, BOLLINGER_REV, etc or all"),
+    status: Optional[str] = Query("all", description="open, closed, all"),
 ) -> Dict[str, Any]:
-    """Returns recorded MT5 trades with timeframe, period, and strategy filtering."""
-    return mt5_bridge.get_recorded_trades(timeframe=timeframe, period=period, strategy=strategy)
+    """Returns recorded MT5 trades with timeframe, period, strategy, and status filtering."""
+    return mt5_bridge.get_recorded_trades(timeframe=timeframe, period=period, strategy=strategy, status=status)
 
 
 @router.get("/strategy-performance")

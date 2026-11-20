@@ -72,7 +72,7 @@ export const TradingViewChart: React.FC<Props> = ({
         horzLines: { color: "rgba(255, 255, 255, 0.04)" },
       },
       width: container.clientWidth,
-      height: 450,
+      height: container.clientHeight > 100 ? container.clientHeight : 450,
       timeScale: {
         barSpacing: 10,
         minBarSpacing: 3,
@@ -227,13 +227,24 @@ export const TradingViewChart: React.FC<Props> = ({
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+        const w = chartContainerRef.current.clientWidth;
+        const h = chartContainerRef.current.clientHeight;
+        chartRef.current.applyOptions({
+          width: w,
+          height: h > 100 ? h : 450,
+        });
       }
     };
     window.addEventListener("resize", handleResize);
 
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    resizeObserver.observe(container);
+
     return () => {
       window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
     };
@@ -558,7 +569,7 @@ export const TradingViewChart: React.FC<Props> = ({
           <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Future Offset: +20 Bars</span>
         </div>
       </div>
-      <div ref={chartContainerRef} style={{ width: "100%", height: "450px" }} />
+      <div ref={chartContainerRef} style={{ width: "100%", flex: 1, minHeight: "340px", position: "relative" }} />
     </div>
   );
 };

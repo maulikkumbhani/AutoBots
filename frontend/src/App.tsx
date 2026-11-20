@@ -79,20 +79,51 @@ import {
   BookOpen,
   LayoutDashboard,
 } from "lucide-react";
+import { getStoredItem, setStoredItem } from "./utils/storage";
 
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<"TERMINAL" | "XAUUSD">(
-    window.location.hash.toLowerCase().includes("xau") ? "XAUUSD" : "TERMINAL"
+  const [currentView, setCurrentView] = useState<"TERMINAL" | "XAUUSD">(() => {
+    if (typeof window !== "undefined" && window.location.hash.toLowerCase().includes("xau")) return "XAUUSD";
+    return getStoredItem<"TERMINAL" | "XAUUSD">("autobots_view", "XAUUSD");
+  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(() =>
+    getStoredItem<string>("autobots_symbol", "XAUUSD")
   );
-  const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
-  const [timeframe, setTimeframe] = useState("15m");
-  const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">("multibot");
-  const [terminalMode, setTerminalMode] = useState<"simplified" | "pro">("simplified");
+  const [timeframe, setTimeframe] = useState<string>(() =>
+    getStoredItem<string>("autobots_timeframe", "15m")
+  );
+  const [activeTab, setActiveTab] = useState<"multibot" | "strategy_lab" | "order_block" | "master_sheet" | "portfolio" | "ledger" | "models" | "predictions" | "replay" | "accuracy">(() =>
+    getStoredItem<any>("autobots_active_tab", "multibot")
+  );
+  const [terminalMode, setTerminalMode] = useState<"simplified" | "pro">(() =>
+    getStoredItem<"simplified" | "pro">("autobots_terminal_mode", "simplified")
+  );
   const [showAcademyModal, setShowAcademyModal] = useState<boolean>(false);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(true);
   const [showServerModal, setShowServerModal] = useState<boolean>(false);
   const [sessionsOverview, setSessionsOverview] = useState<MarketSessionsOverview | null>(null);
   const [showSessionsModal, setShowSessionsModal] = useState<boolean>(false);
+
+  // Synchronize state with persistent localStorage across page refreshes
+  useEffect(() => {
+    setStoredItem("autobots_view", currentView);
+  }, [currentView]);
+
+  useEffect(() => {
+    setStoredItem("autobots_symbol", selectedSymbol);
+  }, [selectedSymbol]);
+
+  useEffect(() => {
+    setStoredItem("autobots_timeframe", timeframe);
+  }, [timeframe]);
+
+  useEffect(() => {
+    setStoredItem("autobots_active_tab", activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setStoredItem("autobots_terminal_mode", terminalMode);
+  }, [terminalMode]);
 
   // State
   const [instruments, setInstruments] = useState<InstrumentSummary[]>([]);

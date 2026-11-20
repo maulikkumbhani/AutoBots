@@ -414,9 +414,12 @@ export interface FvgAnalysisResponse {
 export async function fetchMT5Trades(
   timeframe: string = "all",
   period: string = "all",
-  strategy: string = "all"
+  strategy: string = "all",
+  status: string = "all"
 ): Promise<{
   total_trades: number;
+  open_count?: number;
+  closed_count?: number;
   wins: number;
   losses: number;
   win_rate: number;
@@ -428,7 +431,7 @@ export async function fetchMT5Trades(
   current_balance: number;
   trades: RecordedMT5Trade[];
 }> {
-  const params = new URLSearchParams({ timeframe, period, strategy });
+  const params = new URLSearchParams({ timeframe, period, strategy, status });
   const res = await fetch(`${API_BASE}/mt5/bridge/trades?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch MT5 trades");
   return res.json();

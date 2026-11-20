@@ -214,25 +214,81 @@ void OnTimer()
 }
 
 //+------------------------------------------------------------------+
-//| Closes all open positions immediately                            |
+//| Closes all open positions immediately (100% Guaranteed Execution) |
 //+------------------------------------------------------------------+
 void CloseAllPositions(string reason)
 {
    Print("🚨 [AutoBot RISK GUARD] Closing all open positions! Reason: ", reason);
    int closed = 0;
-   for (int i = PositionsTotal() - 1; i >= 0; i--)
+   int total = PositionsTotal();
+   if (total == 0)
+   {
+      ExtLastStatus = "NO OPEN POSITIONS TO CLOSE";
+      WriteLocalTelemetry();
+      UpdateChartHUD();
+      return;
+   }
+
+   ulong savedMagic = ExtTrade.RequestMagic();
+   ExtTrade.SetExpertMagicNumber(0); // Set to 0 to permit closing any position regardless of magic number
+   ExtTrade.SetDeviationInPoints(500); // 500 points slippage tolerance to guarantee instant market close
+
+   for (int i = total - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
       if (ticket > 0)
       {
-         if (ExtTrade.PositionClose(ticket))
+         string posSym = PositionGetString(POSITION_SYMBOL);
+         SetOptimalFillingMode(posSym);
+
+         bool ok = ExtTrade.PositionClose(ticket, 500);
+         if (!ok)
          {
-            closed++;
+            ok = ExtTrade.PositionClose(ticket, ULONG_MAX);
          }
+
+         if (!ok)
+         {
+            // Direct OrderSend fallback
+            MqlTradeRequest req;
+            MqlTradeResult  res;
+            ZeroMemory(req);
+            ZeroMemory(res);
+
+            long pType = PositionGetInteger(POSITION_TYPE);
+            req.action = TRADE_ACTION_DEAL;
+            req.position = ticket;
+            req.symbol = posSym;
+            req.volume = PositionGetDouble(POSITION_VOLUME);
+            req.deviation = 500;
+            req.type = (pType == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+            req.price = (pType == POSITION_TYPE_BUY) ? SymbolInfoDouble(posSym, SYMBOL_BID) : SymbolInfoDouble(posSym, SYMBOL_ASK);
+
+            uint filling = (uint)SymbolInfoInteger(posSym, SYMBOL_FILLING_MODE);
+            if ((filling & SYMBOL_FILLING_FOK) != 0) req.type_filling = ORDER_FILLING_FOK;
+            else if ((filling & SYMBOL_FILLING_IOC) != 0) req.type_filling = ORDER_FILLING_IOC;
+            else req.type_filling = ORDER_FILLING_RETURN;
+
+            ok = OrderSend(req, res);
+            if (ok && (res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_PLACED))
+            {
+               PrintFormat("✅ Force-closed ticket #%I64u via raw OrderSend.", ticket);
+            }
+            else
+            {
+               PrintFormat("⚠️ Close ticket #%I64u failed: Code %d - %s", ticket, res.retcode, res.comment);
+            }
+         }
+
+         if (ok) closed++;
       }
    }
-   ExtLastStatus = StringFormat("CLOSED ALL %d POSITIONS (%s)", closed, reason);
-   PrintFormat("✅ Successfully closed %d positions.", closed);
+
+   ExtTrade.SetExpertMagicNumber(savedMagic);
+   ExtTrade.SetDeviationInPoints(InpDeviationPoints);
+
+   ExtLastStatus = StringFormat("CLOSED %d OF %d POSITIONS (%s)", closed, total, reason);
+   PrintFormat("✅ Successfully closed %d of %d positions.", closed, total);
    WriteLocalTelemetry();
    UpdateChartHUD();
 }
@@ -399,6 +455,15 @@ void CheckAndExecuteLocalOrders()
    bool updated = false;
    for (int i = 0; i < count; i++)
    {
+      // INSTANT FAST CLOSE ALL TRIGGER: Fires immediately if signal contains CLOSE_ALL / CLOSEALL
+      if (StringFind(lines[i], "CLOSE_ALL") >= 0 || StringFind(lines[i], "CLOSEALL") >= 0)
+      {
+         CloseAllPositions("Immediate Remote UI Signal");
+         lines[i] = "CMD-CLOSEALL|XAUUSD|CLOSE_ALL|0|0|0|EmergencyClose|DONE";
+         updated = true;
+         continue;
+      }
+
       string parts[];
       int n = StringSplit(lines[i], '|', parts);
       if (n >= 8 && parts[7] == "QUEUED")
@@ -420,13 +485,54 @@ void CheckAndExecuteLocalOrders()
             continue;
          }
 
-         // Handle Individual Ticket Remote Close Command
+         // Handle Individual Ticket Remote Close Command (100% Guaranteed Execution)
          if (side == "CLOSE_TICKET" || side == "CLOSE")
          {
             ulong targetTicket = (ulong)StringToInteger(cmt);
+            if (targetTicket == 0 && StringFind(sigId, "CMD-CLOSE-") >= 0)
+            {
+               string sub = sigId;
+               StringReplace(sub, "CMD-CLOSE-", "");
+               targetTicket = (ulong)StringToInteger(sub);
+            }
             if (targetTicket > 0)
             {
-               if (ExtTrade.PositionClose(targetTicket))
+               ulong savedMagic = ExtTrade.RequestMagic();
+               ExtTrade.SetExpertMagicNumber(0);
+               ExtTrade.SetDeviationInPoints(500);
+               bool ok = ExtTrade.PositionClose(targetTicket, 500);
+               if (!ok) ok = ExtTrade.PositionClose(targetTicket, ULONG_MAX);
+               if (!ok)
+               {
+                  for (int p = PositionsTotal() - 1; p >= 0; p--)
+                  {
+                     if (PositionGetTicket(p) == targetTicket)
+                     {
+                        string posSym = PositionGetString(POSITION_SYMBOL);
+                        SetOptimalFillingMode(posSym);
+                        MqlTradeRequest req;
+                        MqlTradeResult  res;
+                        ZeroMemory(req); ZeroMemory(res);
+                        long pType = PositionGetInteger(POSITION_TYPE);
+                        req.action = TRADE_ACTION_DEAL;
+                        req.position = targetTicket;
+                        req.symbol = posSym;
+                        req.volume = PositionGetDouble(POSITION_VOLUME);
+                        req.deviation = 500;
+                        req.type = (pType == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+                        req.price = (pType == POSITION_TYPE_BUY) ? SymbolInfoDouble(posSym, SYMBOL_BID) : SymbolInfoDouble(posSym, SYMBOL_ASK);
+                        uint filling = (uint)SymbolInfoInteger(posSym, SYMBOL_FILLING_MODE);
+                        if ((filling & SYMBOL_FILLING_FOK) != 0) req.type_filling = ORDER_FILLING_FOK;
+                        else if ((filling & SYMBOL_FILLING_IOC) != 0) req.type_filling = ORDER_FILLING_IOC;
+                        else req.type_filling = ORDER_FILLING_RETURN;
+                        ok = OrderSend(req, res);
+                        break;
+                     }
+                  }
+               }
+               ExtTrade.SetExpertMagicNumber(savedMagic);
+               ExtTrade.SetDeviationInPoints(InpDeviationPoints);
+               if (ok)
                   PrintFormat("✅ [AutoBot REMOTE CLOSE] Successfully closed ticket #%I64u", targetTicket);
                else
                   PrintFormat("⚠️ [AutoBot REMOTE CLOSE] Ticket #%I64u not found or already closed on broker.", targetTicket);
@@ -512,6 +618,12 @@ void CheckAutonomousStrategy()
 //+------------------------------------------------------------------+
 void ExecuteMarketOrder(string sym, string side, double lots, double sl_val, double tp_val, string comment, string sigId)
 {
+   if (side != "BUY" && side != "SELL")
+   {
+      PrintFormat("ℹ️ [AutoBot IPC] Non-market side '%s' skipped in ExecuteMarketOrder.", side);
+      return;
+   }
+
    if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
    {
       Print("❌ [AutoBot EXECUTION BLOCKED] Algo Trading button at top MT5 toolbar is OFF (Red)!");

@@ -964,8 +964,9 @@ class MT5BridgeManager:
         timeframe: Optional[str] = None,
         period: Optional[str] = None,
         strategy: Optional[str] = None,
+        status: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Returns recorded MT5 trades with full filtering by timeframe, date period, and strategy."""
+        """Returns recorded MT5 trades with full filtering by timeframe, date period, strategy, and open/closed status."""
         self.sync_file_telemetry()
         trades = list(self.executed_trades)
 
@@ -1029,6 +1030,14 @@ class MT5BridgeManager:
                     filtered_period.append(t)
             trades = filtered_period
 
+        # 4. Separate Counts & Status Filter (all, open, closed)
+        open_count = sum(1 for t in trades if t.get("status") == "OPEN")
+        closed_count = sum(1 for t in trades if t.get("status") == "CLOSED")
+        
+        if status and status.strip().lower() != "all":
+            st_req = status.strip().upper()
+            trades = [t for t in trades if t.get("status") == st_req]
+
         total_trades = len(trades)
         wins = sum(1 for t in trades if t.get("pnl", 0.0) >= 0)
         losses = sum(1 for t in trades if t.get("pnl", 0.0) < 0)
@@ -1040,6 +1049,8 @@ class MT5BridgeManager:
 
         return {
             "total_trades": total_trades,
+            "open_count": open_count,
+            "closed_count": closed_count,
             "wins": wins,
             "losses": losses,
             "win_rate": win_rate,

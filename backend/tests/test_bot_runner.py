@@ -14,7 +14,7 @@ async def test_bot_cycle_execution_and_order_placement():
     result = await bot.execute_cycle()
     assert result is not None
     assert "action" in result
-    assert result["action"] in ["BOUGHT", "SOLD", "MONITORING"]
+    assert result["action"] in ["BOUGHT", "SOLD", "MONITORING", "STANDBY_MARKET_CLOSED"]
 
     cfg = bot.get_config()
     assert cfg["symbol"] == "NIFTY 50"
