@@ -493,6 +493,72 @@ export async function fetchFvgAnalysis(symbol: string = "XAUUSD"): Promise<FvgAn
   return res.json();
 }
 
+export interface MarketFlowAnalysisResponse {
+  symbol: string;
+  current_price: number;
+  bid: number;
+  ask: number;
+  spread_points: number;
+  spread_compressed: boolean;
+  buyer_volume_pct: number;
+  seller_volume_pct: number;
+  imbalance_ratio: number;
+  tick_velocity_per_sec: number;
+  delivery_bias: string;
+  recommended_burst_side: "BUY" | "SELL";
+  burst_readiness_score: number;
+  signal_reason: string;
+  burst_config: {
+    target_profit_per_ticket_usd: number;
+    protective_loss_per_ticket_usd: number;
+    target_pts_move: number;
+    stop_pts_move: number;
+    lots_per_ticket: number;
+    burst_count: number;
+    cumulative_target_usd: number;
+    cumulative_risk_usd: number;
+    compounding_level: number;
+  };
+  historical_stats: {
+    total_burst_waves: number;
+    total_micro_trades: number;
+    successful_bursts: number;
+    win_rate: number;
+    cumulative_burst_profit: number;
+    average_burst_duration_sec: number;
+    consecutive_wins: number;
+  };
+  timestamp: string;
+}
+
+export async function fetchMarketFlow(symbol: string = "XAUUSD"): Promise<MarketFlowAnalysisResponse> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/market-flow?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error("Failed to fetch market flow analysis");
+  return res.json();
+}
+
+export async function executeMicroBurstWave(
+  side: "BUY" | "SELL",
+  burst_count: number = 25,
+  target_profit_per_ticket: number = 0.50,
+  protective_loss_per_ticket: number = 0.75,
+  lots_per_ticket: number = 0.02
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/mt5/bridge/micro-burst`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      side,
+      burst_count,
+      target_profit_per_ticket,
+      protective_loss_per_ticket,
+      lots_per_ticket,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to execute micro burst wave");
+  return res.json();
+}
+
 export interface VolumeOptimizationData {
   mode: "DYNAMIC_AUTO" | "MANUAL_FIXED";
   symbol: string;

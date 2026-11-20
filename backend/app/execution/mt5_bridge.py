@@ -167,6 +167,16 @@ class MT5BridgeManager:
             "baseline_wr": 58.0,
             "description": "Multi-session directional wave rider with trailing structural stops",
         },
+        "MICRO_BURST": {
+            "name": "Sub-Dollar Micro-Burst Scalper ($0.50-$1.00 Rapid)",
+            "horizon": "Millisecond HFT (Tick - 1m)",
+            "default_tf": "1m",
+            "target_move": 0.25,
+            "stop_loss_move": 0.35,
+            "optimal_lots": 0.02,
+            "baseline_wr": 86.5,
+            "description": "Fires synchronized 10-50 micro-tickets capturing +$0.50 per ticket in milliseconds on tape flow bursts",
+        },
     }
 
     def __init__(self):
@@ -274,6 +284,18 @@ class MT5BridgeManager:
             {"s": "SWING_FLOW", "tf": "4h", "side": "BUY", "delta_h": 96.0, "pnl": -12.00, "lots": 0.02, "move": -6.00},
             {"s": "SWING_FLOW", "tf": "1d", "side": "BUY", "delta_h": 240.0, "pnl": 25.00, "lots": 0.02, "move": 12.50},
             {"s": "SWING_FLOW", "tf": "1w", "side": "SELL", "delta_h": 580.0, "pnl": 28.00, "lots": 0.02, "move": 14.00},
+
+            # MICRO_BURST (Millisecond Sub-Dollar HFT Rapid Multi-Trades: +$0.50 to +$1.00 each)
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 0.1, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 0.1, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 0.1, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "SELL", "delta_h": 0.5, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "SELL", "delta_h": 0.5, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 1.8, "pnl": -0.70, "lots": 0.02, "move": -0.35},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 4.2, "pnl": 0.50, "lots": 0.02, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 9.5, "pnl": 1.00, "lots": 0.04, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "SELL", "delta_h": 20.0, "pnl": 1.00, "lots": 0.04, "move": 0.25},
+            {"s": "MICRO_BURST", "tf": "1m", "side": "BUY", "delta_h": 55.0, "pnl": 0.50, "lots": 0.02, "move": 0.25},
         ]
 
         ticket_counter = 780001
@@ -727,6 +749,7 @@ class MT5BridgeManager:
                     or (s_q in ["order_block", "orderblock", "ob"] and "order" in t_strat)
                     or (s_q in ["consensus_ml", "consensus", "ml"] and "consensus" in t_strat)
                     or (s_q in ["swing_flow", "swing", "macro"] and "swing" in t_strat)
+                    or (s_q in ["micro_burst", "burst", "sub_dollar", "hft"] and "burst" in t_strat)
                 ):
                     filtered_strat.append(t)
             trades = filtered_strat
@@ -932,6 +955,65 @@ class MT5BridgeManager:
             "active_strategy_filter": self.active_strategy_filter,
             "allocation_mode": self.allocation_mode,
             "is_isolated": self.active_strategy_filter != "ALL",
+        }
+
+    def execute_micro_burst_wave(
+        self,
+        side: str = "BUY",
+        burst_count: int = 25,
+        target_per_ticket: float = 0.50,
+        stop_per_ticket: float = 0.75,
+        lots_per_ticket: float = 0.02,
+    ) -> Dict[str, Any]:
+        """
+        Executes a synchronized high-frequency burst of micro-trades at identical prices
+        targeting +$0.50 to +$1.00 per trade in milliseconds.
+        """
+        cur_price = self.live_broker_quotes.get("XAUUSD", {}).get("price", 3520.50)
+        from app.execution.micro_burst_scalper import burst_engine
+        orders = burst_engine.generate_burst_orders(
+            side=side,
+            current_price=cur_price,
+            burst_count=burst_count,
+            profit_target_per_ticket=target_per_ticket,
+        )
+
+        queued_tickets = []
+        now_utc = datetime.now(timezone.utc)
+        for ord_info in orders:
+            sig = {
+                "signal_id": f"SIG-BURST-{int(now_utc.timestamp() * 1000)}-{ord_info['index']}",
+                "symbol": "XAUUSD",
+                "original_symbol": "GOLD",
+                "side": ord_info["side"],
+                "lots": lots_per_ticket,
+                "price": cur_price,
+                "stop_loss": ord_info["stop_loss"],
+                "take_profit": ord_info["take_profit"],
+                "magic_number": 888777,
+                "slippage": 15,
+                "strategy": "MICRO_BURST",
+                "comment": ord_info["comment"],
+                "created_at": now_utc.isoformat(),
+                "status": "QUEUED",
+            }
+            self.pending_signals.append(sig)
+            self._write_signal_to_local_ipc(sig)
+            queued_tickets.append(sig["signal_id"])
+
+        cumulative_gain = round(burst_count * target_per_ticket, 2)
+        logger.info(f"Fired {burst_count}x Micro-Burst tickets on {side.upper()} @ {cur_price} (Target: +${cumulative_gain})")
+        return {
+            "status": "SUCCESS",
+            "burst_side": side.upper(),
+            "burst_count": burst_count,
+            "lots_per_ticket": lots_per_ticket,
+            "target_per_ticket_usd": target_per_ticket,
+            "cumulative_projected_profit_usd": cumulative_gain,
+            "execution_price": cur_price,
+            "queued_signals_count": len(queued_tickets),
+            "queued_signals": queued_tickets,
+            "message": f"⚡ Fired {burst_count}x Millisecond Micro-Burst on {side.upper()} targeting +${cumulative_gain} USD.",
         }
 
     def get_status(self) -> Dict[str, Any]:

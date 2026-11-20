@@ -7,6 +7,7 @@ import pandas as pd
 from app.execution.mt5_bridge import mt5_bridge
 from app.prediction.fvg_gap_scalper import FvgGapScalper
 from app.execution.dynamic_volume_optimizer import volume_optimizer
+from app.execution.micro_burst_scalper import burst_engine
 
 router = APIRouter(prefix="/mt5/bridge", tags=["MT5 Trading Bridge"])
 
@@ -46,6 +47,14 @@ class StrategyIsolationRequest(BaseModel):
 class StrategyAllocationRequest(BaseModel):
     mode: str  # "DYNAMIC_WEIGHTED", "SOLO_ISOLATION_100", "BALANCED_EQUAL"
     isolated_strategy: Optional[str] = None
+
+
+class MicroBurstRequest(BaseModel):
+    side: str  # "BUY" or "SELL"
+    burst_count: Optional[int] = 25  # 5, 10, 25, 50
+    target_profit_per_ticket: Optional[float] = 0.50  # $0.50 - $1.00
+    protective_loss_per_ticket: Optional[float] = 0.75
+    lots_per_ticket: Optional[float] = 0.02
 
 
 @router.get("/status")
@@ -226,3 +235,25 @@ async def get_mt5_ea_code() -> Dict[str, str]:
     else:
         code = "// EA file not found on disk"
     return {"filename": "AutoBot_MT5_Bridge.mq5", "code": code}
+
+
+@router.get("/market-flow")
+async def get_market_flow_analysis(symbol: str = "XAUUSD") -> Dict[str, Any]:
+    """Returns real-time market flow tape, buyer/seller aggression, bid/ask depth, and burst readiness."""
+    cur_quote = mt5_bridge.get_live_broker_quote(symbol) or {"price": 3520.50, "bid": 3520.40, "ask": 3520.60}
+    price = cur_quote.get("price", 3520.50)
+    bid = cur_quote.get("bid", price - 0.10)
+    ask = cur_quote.get("ask", price + 0.10)
+    return burst_engine.analyze_market_flow(symbol=symbol, current_price=price, bid=bid, ask=ask)
+
+
+@router.post("/micro-burst")
+async def execute_micro_burst(req: MicroBurstRequest) -> Dict[str, Any]:
+    """Executes a high-frequency synchronized burst wave of 10-50 sub-dollar micro-trades in milliseconds."""
+    return mt5_bridge.execute_micro_burst_wave(
+        side=req.side,
+        burst_count=req.burst_count or 25,
+        target_per_ticket=req.target_profit_per_ticket or 0.50,
+        stop_per_ticket=req.protective_loss_per_ticket or 0.75,
+        lots_per_ticket=req.lots_per_ticket or 0.02,
+    )
